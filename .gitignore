@@ -1,0 +1,48 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local SQLite databases with actual run data (sample schemas can be committed)
+database/*.db
+database/*.sqlite
+database/*.sqlite3
+
+# Downloaded raw and intermediate data (except reproducible sample datasets)
+data/raw/
+data/processed/
+!data/sample/
+
+# Secrets, credentials & local environment files
+.env
+.env.local
+*.pem
+*.key
+*.token
+
+# Model artifacts
+models/*.joblib
+models/*.pkl
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Streamlit local state
+.streamlit/

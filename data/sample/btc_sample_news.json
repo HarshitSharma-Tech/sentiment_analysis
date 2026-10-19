@@ -1,0 +1,82 @@
+[
+  {
+    "article_id": "sample_news_001",
+    "title": "Bitcoin Surges Toward Key Resistance as Spot ETF Inflows Accelerate",
+    "source": "CoinDesk",
+    "published_at": "2026-10-10 07:00:00",
+    "url": "https://example.com/crypto-news/1",
+    "summary": "Bitcoin Surges Toward Key Resistance as Spot ETF Inflows Accelerate. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": 0.65,
+    "collected_at": "2026-10-19 16:00:00"
+  },
+  {
+    "article_id": "sample_news_002",
+    "title": "Federal Reserve Signals Cautious Rate Path; Crypto Markets Hold Support",
+    "source": "Yahoo Finance",
+    "published_at": "2026-10-10 03:00:00",
+    "url": "https://example.com/crypto-news/2",
+    "summary": "Federal Reserve Signals Cautious Rate Path; Crypto Markets Hold Support. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": 0.15,
+    "collected_at": "2026-10-19 16:00:00"
+  },
+  {
+    "article_id": "sample_news_003",
+    "title": "Over $300M in Crypto Derivatives Liquidated Following Sharp Flash Crash",
+    "source": "Cointelegraph",
+    "published_at": "2026-10-15 18:00:00",
+    "url": "https://example.com/crypto-news/3",
+    "summary": "Over $300M in Crypto Derivatives Liquidated Following Sharp Flash Crash. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": -0.75,
+    "collected_at": "2026-10-19 16:00:00"
+  },
+  {
+    "article_id": "sample_news_004",
+    "title": "Institutional Crypto Custody Adoption Reaches Historic Milestone",
+    "source": "CoinDesk",
+    "published_at": "2026-10-11 08:00:00",
+    "url": "https://example.com/crypto-news/4",
+    "summary": "Institutional Crypto Custody Adoption Reaches Historic Milestone. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": 0.55,
+    "collected_at": "2026-10-19 16:00:00"
+  },
+  {
+    "article_id": "sample_news_005",
+    "title": "Global Regulators Debate Unified Framework for Digital Asset Custodians",
+    "source": "Yahoo Finance",
+    "published_at": "2026-10-18 20:00:00",
+    "url": "https://example.com/crypto-news/5",
+    "summary": "Global Regulators Debate Unified Framework for Digital Asset Custodians. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": 0.0,
+    "collected_at": "2026-10-19 16:00:00"
+  },
+  {
+    "article_id": "sample_news_006",
+    "title": "Bitcoin Mining Efficiency Hits Record High Despite Energy Market Volatility",
+    "source": "Cointelegraph",
+    "published_at": "2026-10-06 01:00:00",
+    "url": "https://example.com/crypto-news/6",
+    "summary": "Bitcoin Mining Efficiency Hits Record High Despite Energy Market Volatility. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": 0.4,
+    "collected_at": "2026-10-19 16:00:00"
+  },
+  {
+    "article_id": "sample_news_007",
+    "title": "Market Watch: Bitcoin Consolidates Near Recent Highs as Traders Eye Macro Data",
+    "source": "CoinDesk",
+    "published_at": "2026-10-17 09:00:00",
+    "url": "https://example.com/crypto-news/7",
+    "summary": "Market Watch: Bitcoin Consolidates Near Recent Highs as Traders Eye Macro Data. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": 0.1,
+    "collected_at": "2026-10-19 16:00:00"
+  },
+  {
+    "article_id": "sample_news_008",
+    "title": "Macroeconomic Uncertainty Prompts Short-Term De-risking in Crypto Assets",
+    "source": "Yahoo Finance",
+    "published_at": "2026-10-13 12:00:00",
+    "url": "https://example.com/crypto-news/8",
+    "summary": "Macroeconomic Uncertainty Prompts Short-Term De-risking in Crypto Assets. Market participants are actively tracking liquidity conditions and institutional sentiment.",
+    "sentiment_compound": -0.45,
+    "collected_at": "2026-10-19 16:00:00"
+  }
+]
