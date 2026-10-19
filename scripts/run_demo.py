@@ -1,17 +1,18 @@
 """
-Zero-Configuration End-to-End Demo Script
+Optimized End-to-End Demo Script
 CrowdWisdomTrading Quantitative Data Scientist Assessment
 Runs the complete forecasting pipeline using 100% free tools and free data sources:
 1. Initializes local SQLite database
 2. Downloads real BTC-USD historical prices (via yfinance or Binance public fallback)
-3. Ingests reproducible crypto X/Twitter posts and analyzes sentiment locally with VADER
-4. Ingests free financial news via public RSS feeds
-5. Computes leakage-free technical and sentiment feature matrices
-6. Generates targets for all 6 horizons (n+0 through n+5)
-7. Runs chronological walk-forward cross validation across 4 models
-8. Simulates quantitative trading strategies with realistic transaction costs
-9. Generates all visualization charts in reports/figures/
-10. Compiles one-page sentiment outlook and complete evaluation report (Markdown + PDF)
+3. Ingests reproducible crypto X/Twitter posts & analyzes sentiment locally with VADER
+4. Ingests free financial news via public RSS feeds (CoinDesk, Cointelegraph, Google News)
+5. Computes leakage-free technical and sentiment feature matrices (Price vs Price+Sentiment)
+6. Generates targets for all 6 horizons (n+0 through n+5) with distinct target spans
+7. Runs purged chronological walk-forward cross validation across 4 models
+8. Executes feature ablation: Price-Only vs. Price+Sentiment
+9. Simulates quantitative trading strategies with realistic 10 bps transaction costs
+10. Generates all 8 visualization charts in reports/figures/
+11. Compiles one-page sentiment outlook and complete evaluation report (Markdown + PDF)
 """
 
 from datetime import datetime, timezone
@@ -20,7 +21,6 @@ import sys
 from pathlib import Path
 import pandas as pd
 
-# Ensure project root is in python path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
@@ -30,7 +30,7 @@ from src.ingestion.prices import PriceIngestion
 from src.ingestion.x_import import XPostImporter
 from src.ingestion.news import NewsIngestion
 from src.sentiment import get_analyzer
-from src.features import FeatureEngineer
+from src.features import FeatureEngineer, PRICE_FEATURE_COLS, ALL_FEATURE_COLS
 from src.targets import TargetEngineer
 from src.validate import WalkForwardValidator
 from src.backtest import StrategyBacktester
@@ -48,7 +48,7 @@ logger = logging.getLogger("run_demo")
 def run_demo() -> None:
     print("=" * 80)
     print(" CROWDWISDOM TRADING: QUANTITATIVE SENTIMENT PRICE PREDICTION SYSTEM")
-    print(" 100% Free-First & Reproducible End-to-End Pipeline Demo")
+    print(" 100% Free-First, Purged Walk-Forward & Multi-Horizon Pipeline Demo")
     print("=" * 80)
 
     cfg = get_config()
@@ -56,11 +56,11 @@ def run_demo() -> None:
     logger.info(f"Initialized Run ID: {run_id}")
 
     # 1. Database Initialization
-    logger.info(f"1/8 Initializing SQLite database at {cfg.database_path}...")
+    logger.info(f"1/9 Initializing SQLite database at {cfg.database_path}...")
     db = DatabaseManager(cfg.database_path)
 
     # 2. Historical Price Ingestion (Free yfinance or Binance fallback)
-    logger.info("2/8 Ingesting real historical market prices...")
+    logger.info("2/9 Ingesting real historical market prices...")
     price_ingestion = PriceIngestion(db_manager=db)
     prices_df = price_ingestion.get_or_download_prices(
         ticker=cfg.asset_ticker,
@@ -71,7 +71,7 @@ def run_demo() -> None:
     logger.info(f"Loaded {len(prices_df)} price bars ({prices_df.index.min()} to {prices_df.index.max()}).")
 
     # 3. Social Data Ingestion (Free local reproducible dataset)
-    logger.info("3/8 Ingesting X/Twitter posts & performing local VADER sentiment analysis...")
+    logger.info("3/9 Ingesting X/Twitter posts & performing local VADER sentiment analysis...")
     sample_json = cfg.sample_dir / "btc_sample_x_posts.json"
     if not sample_json.exists():
         logger.warning("Sample JSON not found. Generating fresh sample data...")
@@ -83,13 +83,13 @@ def run_demo() -> None:
     posts_df = db.get_x_posts(ticker="BTC")
     logger.info(f"Total processed X posts available: {len(posts_df)}")
 
-    # 4. News Ingestion (Free public RSS feeds)
-    logger.info("4/8 Fetching recent financial news via free public RSS feeds...")
+    # 4. News Ingestion (Free public RSS feeds with 5s timeout)
+    logger.info("4/9 Fetching recent financial news via free public RSS feeds...")
     news_ingestion = NewsIngestion(db_manager=db, tavily_api_key=cfg.tavily_api_key, exa_api_key=cfg.exa_api_key)
     try:
         news_articles = news_ingestion.fetch_rss_feeds(feeds=cfg.rss_feeds, max_per_feed=15)
     except Exception as e:
-        logger.warning(f"RSS fetch encountered warning ({e}); importing sample news...")
+        logger.warning(f"RSS fetch warning ({e}); using local news articles...")
         sample_news = cfg.sample_dir / "btc_sample_news.json"
         if sample_news.exists():
             news_articles = news_ingestion.import_from_json(sample_news)
@@ -97,7 +97,7 @@ def run_demo() -> None:
     logger.info(f"Total news articles available: {len(recent_news_df)}")
 
     # 5. Feature Engineering
-    logger.info("5/8 Computing point-in-time sentiment & technical price features...")
+    logger.info("5/9 Computing point-in-time curated sentiment & technical price features...")
     fe = FeatureEngineer(
         sentiment_windows=cfg.sentiment_rolling_windows,
         price_windows=cfg.price_rolling_windows,
@@ -113,26 +113,17 @@ def run_demo() -> None:
     )
     logger.info(f"Constructed feature matrix with shape {feature_matrix.shape}.")
 
-    # 6. Target Construction (n+0 to n+5)
-    logger.info("6/8 Generating multi-horizon forecasting targets (n+0 to n+5)...")
+    # 6. Target Construction (n+0 through n+5)
+    logger.info("6/9 Generating multi-horizon forecasting targets (n+0 to n+5)...")
     te = TargetEngineer()
     df_with_targets = te.create_targets(feature_matrix)
 
-    # Exclude non-feature reference columns
-    exclude_cols = [
-        "open", "high", "low", "close", "volume",
-        "cutoff_price_h0", "target_price_h0", "target_return_h0",
-        "cutoff_price_h1", "target_price_h1", "target_return_h1",
-        "cutoff_price_h2", "target_price_h2", "target_return_h2",
-        "cutoff_price_h3", "target_price_h3", "target_return_h3",
-        "cutoff_price_h4", "target_price_h4", "target_return_h4",
-        "cutoff_price_h5", "target_price_h5", "target_return_h5",
-    ]
-    feature_cols = [c for c in df_with_targets.columns if c not in exclude_cols]
-    logger.info(f"Selected {len(feature_cols)} clean predictive features.")
+    available_price_feats = [c for c in PRICE_FEATURE_COLS if c in df_with_targets.columns]
+    available_all_feats = [c for c in ALL_FEATURE_COLS if c in df_with_targets.columns]
+    logger.info(f"Feature set: {len(available_price_feats)} price features, {len(available_all_feats)} total (price+sentiment) features.")
 
     # 7. Walk-Forward Validation
-    logger.info("7/8 Running chronological walk-forward cross validation...")
+    logger.info("7/9 Running purged chronological walk-forward cross validation...")
     validator = WalkForwardValidator(
         min_train_size=cfg.wf_min_train_size,
         step_size=cfg.wf_step_size,
@@ -144,14 +135,51 @@ def run_demo() -> None:
     models_to_test = ["persistence", "ridge", "random_forest", "hist_gradient_boosting"]
     metrics_df, preds_df = validator.run_full_validation(
         df_with_targets=df_with_targets,
-        feature_cols=feature_cols,
+        feature_cols=available_all_feats,
         models=models_to_test,
         horizons=cfg.horizons,
         run_id=run_id,
     )
 
-    # 8. Strategy Backtesting
-    logger.info("8/8 Evaluating out-of-sample quantitative trading strategies...")
+    # 8. Feature Ablation: Price-Only vs. Price + Sentiment
+    logger.info("8/9 Running feature ablation study (Price-Only vs. Price+Sentiment)...")
+    price_metrics_df, _ = validator.run_full_validation(
+        df_with_targets=df_with_targets,
+        feature_cols=available_price_feats,
+        models=["ridge", "random_forest"],
+        horizons=cfg.horizons,
+        run_id=f"{run_id}_price_only",
+    )
+
+    ablation_rows = []
+    for h in cfg.horizons:
+        for m in ["ridge", "random_forest"]:
+            p_row = price_metrics_df[(price_metrics_df["model_name"] == m) & (price_metrics_df["horizon"] == h)]
+            s_row = metrics_df[(metrics_df["model_name"] == m) & (metrics_df["horizon"] == h)]
+            if not p_row.empty:
+                ablation_rows.append({
+                    "horizon": h,
+                    "model_name": m,
+                    "feature_set": "Price Only",
+                    "mae": float(p_row["mae"].values[0]),
+                    "rmse": float(p_row["rmse"].values[0]),
+                    "directional_accuracy": float(p_row["directional_accuracy"].values[0]),
+                    "baseline_mae": float(p_row["baseline_mae"].values[0]),
+                })
+            if not s_row.empty:
+                ablation_rows.append({
+                    "horizon": h,
+                    "model_name": m,
+                    "feature_set": "Price + Sentiment",
+                    "mae": float(s_row["mae"].values[0]),
+                    "rmse": float(s_row["rmse"].values[0]),
+                    "directional_accuracy": float(s_row["directional_accuracy"].values[0]),
+                    "baseline_mae": float(s_row["baseline_mae"].values[0]),
+                })
+    ablation_df = pd.DataFrame(ablation_rows)
+
+    # 9. Strategy Backtesting
+    logger.info("9/9 Evaluating out-of-sample quantitative trading strategies...")
     backtester = StrategyBacktester(
         initial_capital=cfg.initial_capital,
         transaction_cost_bps=cfg.transaction_cost_bps,
@@ -161,7 +189,7 @@ def run_demo() -> None:
     )
 
     backtest_results_dict = {}
-    backtest_summary_rows = []
+    backtest_summary_df = backtester.evaluate_all_models(preds_df, horizon=1)
 
     for m in models_to_test:
         if m == "persistence":
@@ -169,21 +197,8 @@ def run_demo() -> None:
         try:
             res = backtester.run_backtest(preds_df, model_name=m, horizon=1)
             backtest_results_dict[m] = res
-            backtest_summary_rows.append({
-                "model_name": m,
-                "horizon": 1,
-                "cumulative_return_pct": res.cumulative_return_pct,
-                "sharpe_ratio": res.sharpe_ratio,
-                "sortino_ratio": res.sortino_ratio,
-                "max_drawdown_pct": res.max_drawdown_pct,
-                "win_rate_pct": res.win_rate_pct,
-                "total_trades": res.total_trades,
-                "benchmark_cumulative_pct": res.benchmark_cumulative_pct,
-            })
         except Exception as e:
             logger.warning(f"Backtest error for {m}: {e}")
-
-    backtest_summary_df = pd.DataFrame(backtest_summary_rows)
 
     # Save evaluation results to SQLite
     eval_records = []
@@ -193,11 +208,11 @@ def run_demo() -> None:
         bt_match = backtest_summary_df[
             (backtest_summary_df["model_name"] == m_name) & (backtest_summary_df["horizon"] == h)
         ]
-        sh = bt_match["sharpe_ratio"].values[0] if not bt_match.empty else 0.0
-        so = bt_match["sortino_ratio"].values[0] if not bt_match.empty else 0.0
-        mdd = bt_match["max_drawdown_pct"].values[0] if not bt_match.empty else 0.0
-        cum = bt_match["cumulative_return_pct"].values[0] if not bt_match.empty else 0.0
-        win = bt_match["win_rate_pct"].values[0] if not bt_match.empty else 0.0
+        sh = float(bt_match["sharpe_ratio"].values[0]) if not bt_match.empty else 0.0
+        so = float(bt_match["sortino_ratio"].values[0]) if not bt_match.empty else 0.0
+        mdd = float(bt_match["max_drawdown_pct"].values[0]) if not bt_match.empty else 0.0
+        cum = float(bt_match["cumulative_return_pct"].values[0]) if not bt_match.empty else 0.0
+        win = float(bt_match["win_rate_pct"].values[0]) if not bt_match.empty else 0.0
         trades = int(bt_match["total_trades"].values[0]) if not bt_match.empty else 0
 
         eval_records.append({
@@ -224,7 +239,7 @@ def run_demo() -> None:
         })
     db.save_evaluation_results(eval_records)
 
-    # 9. Visualizations
+    # 10. Visualizations
     logger.info("Generating publication-grade charts...")
     vis = Visualizer(output_dir=cfg.figures_dir)
     vis.plot_price_and_sentiment(prices_df, agg_sentiment)
@@ -234,8 +249,9 @@ def run_demo() -> None:
     vis.plot_model_comparison(metrics_df)
     vis.plot_correlation_heatmap(df_with_targets)
     vis.plot_equity_curves(backtest_results_dict)
+    vis.plot_ablation_comparison(price_metrics_df, metrics_df, model_name="ridge")
 
-    # 10. Reports
+    # 11. Reports
     logger.info("Compiling reports...")
     rg = ReportGenerator(reports_dir=cfg.reports_dir)
     outlook_path = rg.generate_sentiment_outlook(
@@ -250,6 +266,7 @@ def run_demo() -> None:
     report_path = rg.generate_evaluation_report(
         metrics_df=metrics_df,
         backtest_results_df=backtest_summary_df,
+        ablation_df=ablation_df,
         asset_ticker=cfg.asset_ticker,
         frequency=cfg.data_frequency,
         run_id=run_id,

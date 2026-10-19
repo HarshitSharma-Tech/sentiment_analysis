@@ -282,10 +282,12 @@ class Visualizer:
         fig, ax = plt.subplots(figsize=(12, 6))
         ax.set_title("Out-of-Sample Trading Strategy Equity Curves vs. Buy & Hold Benchmark", fontweight="bold", pad=15)
 
-        # Plot Benchmark first
+        # Plot Benchmark and No-Trade baseline
         first_res = list(backtest_results_dict.values())[0]
         bm_curve = first_res.benchmark_curve
         ax.plot(bm_curve.index, bm_curve.values, color="black", linestyle="--", linewidth=1.5, label="Buy & Hold BTC Benchmark")
+        if hasattr(first_res, "no_trade_curve"):
+            ax.plot(first_res.no_trade_curve.index, first_res.no_trade_curve.values, color="gray", linestyle=":", linewidth=1.5, label="No-Trade Baseline ($100k)")
 
         # Plot each strategy
         colors = ["#2ca02c", "#1f77b4", "#9467bd", "#ff7f0e"]
@@ -293,7 +295,7 @@ class Visualizer:
             color = colors[i % len(colors)]
             c_ret = res.cumulative_return_pct
             sh = res.sharpe_ratio
-            label = f"{m_name.replace('_', ' ').title()} Strategy (Ret: {c_ret:+.1f}%, Sharpe: {sh:.2f})"
+            label = f"{m_name.replace('_', ' ').title()} (Ret: {c_ret:+.1f}%, Sharpe: {sh:.2f})"
             ax.plot(res.equity_curve.index, res.equity_curve.values, color=color, linewidth=2.0, label=label)
 
         ax.set_ylabel("Portfolio Value ($)", fontweight="bold")
@@ -301,6 +303,53 @@ class Visualizer:
         ax.legend(loc="upper left", frameon=True)
         ax.grid(True, linestyle=":", alpha=0.6)
         fig.autofmt_xdate()
+
+        save_path = self.output_dir / filename
+        plt.savefig(save_path, bbox_inches="tight")
+        plt.close(fig)
+        return save_path
+
+    # 8. Feature Ablation: Price-Only vs. Price + Sentiment
+    def plot_ablation_comparison(
+        self,
+        price_metrics_df: pd.DataFrame,
+        sent_metrics_df: pd.DataFrame,
+        model_name: str = "ridge",
+        filename: str = "ablation_comparison.png",
+    ) -> Path:
+        p_sub = price_metrics_df[price_metrics_df["model_name"] == model_name].sort_values("horizon")
+        s_sub = sent_metrics_df[sent_metrics_df["model_name"] == model_name].sort_values("horizon")
+
+        if p_sub.empty or s_sub.empty:
+            return self.output_dir / filename
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+        horizons = sorted(p_sub["horizon"].unique())
+        x = np.arange(len(horizons))
+        width = 0.35
+
+        # MAE Comparison
+        ax1.bar(x - width/2, p_sub["mae"], width, label="Price-Only Features", color="#4b8bbe")
+        ax1.bar(x + width/2, s_sub["mae"], width, label="Price + Sentiment Features", color="#ff7f0e")
+        ax1.set_title(f"MAE ($) Ablation: Price vs. Sentiment ({model_name.title()})", fontweight="bold")
+        ax1.set_xticks(x)
+        ax1.set_xticklabels([f"n+{h}" for h in horizons])
+        ax1.set_ylabel("Mean Absolute Error ($)")
+        ax1.legend()
+        ax1.grid(True, linestyle=":", alpha=0.6)
+
+        # Directional Accuracy Comparison
+        ax2.bar(x - width/2, p_sub["directional_accuracy"], width, label="Price-Only Features", color="#4b8bbe")
+        ax2.bar(x + width/2, s_sub["directional_accuracy"], width, label="Price + Sentiment Features", color="#ff7f0e")
+        ax2.axhline(50.0, color="red", linestyle="--", label="Random Guess (50%)")
+        ax2.set_title(f"Directional Accuracy (%) Ablation ({model_name.title()})", fontweight="bold")
+        ax2.set_xticks(x)
+        ax2.set_xticklabels([f"n+{h}" for h in horizons])
+        ax2.set_ylabel("Hit Rate (%)")
+        ax2.set_ylim(40, 60)
+        ax2.legend()
+        ax2.grid(True, linestyle=":", alpha=0.6)
 
         save_path = self.output_dir / filename
         plt.savefig(save_path, bbox_inches="tight")

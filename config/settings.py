@@ -63,7 +63,7 @@ class Config:
     rss_feeds: List[dict] = field(default_factory=lambda: [
         {"name": "CoinDesk", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/"},
         {"name": "Cointelegraph", "url": "https://cointelegraph.com/rss"},
-        {"name": "Yahoo Finance Crypto", "url": "https://finance.yahoo.com/news/rssindex"},
+        {"name": "Google News Crypto", "url": "https://news.google.com/rss/search?q=Bitcoin+crypto&hl=en-US&gl=US&ceid=US:en"},
     ])
 
     # Optional API Keys (defaults to None / empty)

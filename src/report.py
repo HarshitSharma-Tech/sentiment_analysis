@@ -33,7 +33,7 @@ class ReportGenerator:
         agg_sentiment: pd.DataFrame,
         recent_posts_df: pd.DataFrame,
         recent_news_df: pd.DataFrame,
-        data_source_label: str = "Reproducible Sample & Live Market Data",
+        data_source_label: str = "Reproducible Sample Social Data + Real Market Prices",
         is_live_x: bool = False,
     ) -> Path:
         """
@@ -43,24 +43,21 @@ class ReportGenerator:
         title_prefix = "LIVE" if is_live_x else "HISTORICAL / DEMO"
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        # Price context
         latest_price = prices_df["close"].iloc[-1] if not prices_df.empty else 0.0
         start_date = prices_df.index.min().strftime("%Y-%m-%d") if not prices_df.empty else "N/A"
         end_date = prices_df.index.max().strftime("%Y-%m-%d") if not prices_df.empty else "N/A"
 
-        # Sentiment metrics
         total_posts = len(recent_posts_df)
         if not agg_sentiment.empty:
             recent_agg = agg_sentiment.tail(24)  # Last 24 hours
-            mean_sent = recent_agg["mean_compound"].mean()
-            pos_pct = recent_agg["pos_proportion"].mean() * 100.0
-            neg_pct = recent_agg["neg_proportion"].mean() * 100.0
-            neu_pct = recent_agg["neu_proportion"].mean() * 100.0
+            mean_sent = float(recent_agg["mean_compound"].mean())
+            pos_pct = float(recent_agg["pos_proportion"].mean() * 100.0)
+            neg_pct = float(recent_agg["neg_proportion"].mean() * 100.0)
+            neu_pct = float(recent_agg["neu_proportion"].mean() * 100.0)
 
-            # Posting activity delta
-            vol_last_12 = recent_agg.tail(12)["post_count"].sum()
-            vol_prev_12 = recent_agg.iloc[-24:-12]["post_count"].sum() if len(recent_agg) >= 24 else vol_last_12
-            vol_delta_pct = ((vol_last_12 - vol_prev_12) / max(1, vol_prev_12)) * 100.0
+            vol_last_12 = float(recent_agg.tail(12)["post_count"].sum())
+            vol_prev_12 = float(recent_agg.iloc[-24:-12]["post_count"].sum()) if len(recent_agg) >= 24 else vol_last_12
+            vol_delta_pct = float(((vol_last_12 - vol_prev_12) / max(1.0, vol_prev_12)) * 100.0)
         else:
             mean_sent, pos_pct, neg_pct, neu_pct, vol_delta_pct = 0.0, 0.0, 0.0, 100.0, 0.0
 
@@ -91,7 +88,7 @@ class ReportGenerator:
 ---
 
 ## 2. Recent Market News & Contextual Intelligence
-*(Collected via 100% Free Public Financial RSS Feeds - CoinDesk, Cointelegraph, Yahoo Finance)*
+*(Collected via 100% Free Public Financial RSS Feeds - CoinDesk, Cointelegraph, Google News)*
 
 """
         if not recent_news_df.empty:
@@ -127,6 +124,7 @@ class ReportGenerator:
         self,
         metrics_df: pd.DataFrame,
         backtest_results_df: pd.DataFrame,
+        ablation_df: Optional[pd.DataFrame] = None,
         asset_ticker: str = "BTC-USD",
         frequency: str = "1h",
         run_id: str = "default_run",
@@ -147,14 +145,14 @@ class ReportGenerator:
 
 ## 1. Executive Summary
 
-This project delivers a complete, production-grade, reproducible machine learning pipeline predicting Bitcoin (`{asset_ticker}`) prices and returns across **six distinct forecast horizons** ($n+0$ to $n+5$). In strict compliance with the core assessment requirement, the entire system is built **exclusively using free tools and free data sources**, requiring zero paid API subscriptions, credits, or GPU hardware.
+This project delivers a production-grade, reproducible machine learning pipeline predicting Bitcoin (`{asset_ticker}`) prices and returns across **six distinct forecast horizons** ($n+0$ to $n+5$). In strict compliance with the core assessment requirement, the entire system is built **exclusively using free tools and free data sources**, requiring zero paid API subscriptions, credits, or GPU hardware.
 
-### Key Pipeline Highlights:
-- **Zero-Lookahead Feature Engineering:** Strictly chronological point-in-time calculation of technical indicators and VADER social sentiment.
-- **Valid Cutoff for $n+0$:** Avoids the trivial task of predicting a known close. Horizon $n+0$ forecasts the closing price of the current period based strictly on prior information available at bar start.
-- **Stationary Return Modeling:** Predicts stationary returns $\\hat{{R}}_{{t \\to t+h}}$ before computing implied price targets $\\hat{{P}} = P_{{cutoff}} \\times (1 + \\hat{{R}})$, eliminating non-stationarity drift.
-- **Chronological Walk-Forward Cross Validation:** Eliminates lookahead bias by fitting all scalers and models strictly on historical training folds before evaluating on out-of-sample test folds.
-- **Rigorous Benchmark Comparison:** Every model is evaluated against the naive **Persistence Baseline** ($P_{{t+h}} = P_t$).
+### Key Rigor & Methodology Enhancements:
+- **Zero-Lookahead Feature Engineering:** Strictly chronological point-in-time calculation of 24 curated technical and social sentiment features.
+- **Distinct Target Definitions across $n+0$ to $n+5$:** At forecast cutoff $t$, all horizons share the identical known cutoff price $P_{{cutoff}} = P_{{close}}(t-1)$ and input vector $X_t$, forecasting future closes $P_{{close}}(t+h)$.
+- **Purged Walk-Forward Cross Validation:** Eliminates multi-step target overlap by purging the $h$-step boundary before each test fold.
+- **Regularization & Variance Reduction:** Models use adaptive shrinkage (RidgeCV) and constrained tree depth to prevent return noise overfitting.
+- **Realistic Backtesting:** Incorporates 10 bps transaction costs, reporting exposure, turnover, win rate, Sharpe, Sortino, and comparing against Buy & Hold and No-Trade baselines.
 
 ---
 
@@ -163,7 +161,7 @@ This project delivers a complete, production-grade, reproducible machine learnin
 Below are the actual out-of-sample evaluation metrics across all six forecast horizons:
 
 | Horizon | Model | Out-of-Sample Bars | MAE ($) | RMSE ($) | MAPE (%) | Directional Accuracy (%) | Baseline MAE ($) | MAE Impv (%) |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 """
         for _, row in metrics_df.sort_values(["horizon", "mae"]).iterrows():
             h_str = f"n+{int(row['horizon'])}"
@@ -177,32 +175,55 @@ Below are the actual out-of-sample evaluation metrics across all six forecast ho
             impv = float(row.get('mae_improvement_pct', 0.0))
             md += f"| **{h_str}** | {m_str} | {bars} | ${mae:,.2f} | ${rmse:,.2f} | {mape:.2f}% | **{dir_acc:.1f}%** | ${b_mae:,.2f} | {impv:+.2f}% |\n"
 
+        if ablation_df is not None and not ablation_df.empty:
+            md += """
+---
+
+## 3. Feature Ablation Study: Price-Only vs. Price + Sentiment
+
+Comparison of predictive power when adding X social sentiment to pure market price features:
+
+| Horizon | Model | Feature Set | MAE ($) | RMSE ($) | Directional Accuracy (%) | Baseline MAE ($) |
+| :---: | :--- | :--- | :---: | :---: | :---: | :---: |
+"""
+            for _, r in ablation_df.iterrows():
+                h_str = f"n+{int(r['horizon'])}"
+                m_str = str(r['model_name']).replace("_", " ").title()
+                f_set = str(r.get('feature_set', 'All Features'))
+                mae = float(r['mae'])
+                rmse = float(r['rmse'])
+                dir_acc = float(r['directional_accuracy'])
+                b_mae = float(r['baseline_mae'])
+                md += f"| **{h_str}** | {m_str} | {f_set} | ${mae:,.2f} | ${rmse:,.2f} | **{dir_acc:.1f}%** | ${b_mae:,.2f} |\n"
+
         md += """
 ---
 
-## 3. Quantitative Trading Strategy Performance
+## 4. Quantitative Trading Strategy Performance
 
 Simulated out-of-sample trading performance with realistic transaction costs (10 bps per trade slippage/taker fee):
 
-| Model | Horizon | Cumulative Return (%) | Annualized Sharpe | Sortino Ratio | Max Drawdown (%) | Win Rate (%) | Total Trades | Benchmark Return (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Model | Horizon | Cumulative Return (%) | Exposure (%) | Turnover (%) | Sharpe | Sortino | Max DD (%) | Win Rate (%) | Trades | Buy & Hold Benchmark (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 """
         for _, row in backtest_results_df.iterrows():
             m_str = str(row['model_name']).replace("_", " ").title()
             h_str = f"n+{int(row['horizon'])}"
             c_ret = float(row['cumulative_return_pct'])
+            exp = float(row.get('exposure_pct', 0.0))
+            to = float(row.get('turnover_pct', 0.0))
             sh = float(row['sharpe_ratio'])
             so = float(row['sortino_ratio'])
             mdd = float(row['max_drawdown_pct'])
             win = float(row['win_rate_pct'])
             trades = int(row['total_trades'])
             bm_ret = float(row['benchmark_cumulative_pct'])
-            md += f"| **{m_str}** | {h_str} | **{c_ret:+.2f}%** | **{sh:.2f}** | {so:.2f} | {mdd:.2f}% | {win:.1f}% | {trades} | {bm_ret:+.2f}% |\n"
+            md += f"| **{m_str}** | {h_str} | **{c_ret:+.2f}%** | {exp:.1f}% | {to:.1f}% | **{sh:.2f}** | {so:.2f} | {mdd:.2f}% | {win:.1f}% | {trades} | {bm_ret:+.2f}% |\n"
 
         md += """
 ---
 
-## 4. Visual Evidence Matrix
+## 5. Visual Artifacts Matrix
 
 The following visual artifacts were generated directly from the out-of-sample validation run:
 
@@ -211,18 +232,19 @@ The following visual artifacts were generated directly from the out-of-sample va
 - **Hourly Social Post Volume:** `reports/figures/post_volume.png`
 - **Actual vs. Predicted Across All 6 Horizons:** `reports/figures/actual_vs_predicted_6horizons.png`
 - **Model Comparison Matrix (MAE & Directional Accuracy):** `reports/figures/model_performance_comparison.png`
+- **Feature Ablation (Price vs. Sentiment):** `reports/figures/ablation_comparison.png`
 - **Feature Correlation Heatmap:** `reports/figures/feature_correlation_heatmap.png`
 - **Out-of-Sample Strategy Equity Curves:** `reports/figures/backtest_equity_curves.png`
 
 ---
 
-## 5. Free-First Architecture & Data Source Audit
+## 6. Free-First Architecture & Data Source Audit
 
 | Component | Assessment Recommendation | Free-First Legitimate Solution | Cost / Status |
 | :--- | :--- | :--- | :--- |
 | **Market Data** | Paid feeds / yfinance | `yfinance` + `Binance Public Spot REST API` | 100% Free |
 | **X / Twitter Data** | Apify ($49+/mo) | Free Local CSV/JSON Pipeline + Calibrated Reproducible Dataset | 100% Free |
-| **News Intelligence** | Tavily / Exa APIs | Free Public RSS Feeds (CoinDesk, Cointelegraph, Yahoo Finance) | 100% Free |
+| **News Intelligence** | Tavily / Exa APIs | Free Public RSS Feeds (CoinDesk, Cointelegraph, Google News) | 100% Free |
 | **Sentiment NLP** | Commercial LLM APIs | Local VADER NLP with Crypto-Domain Custom Lexicon | 100% Free |
 | **Machine Learning** | Cloud Compute / GPU | Scikit-Learn (Ridge, Random Forest, HistGradientBoosting) | 100% Free (CPU) |
 | **Database** | Paid Cloud Database | Local Thread-Safe SQLite with Upsert & Indexing | 100% Free |
@@ -230,11 +252,11 @@ The following visual artifacts were generated directly from the out-of-sample va
 
 ---
 
-## 6. Honest Limitations & Future Improvements
+## 7. Honest Limitations & Future Improvements
 
 1. **Social Data Paywalls:** Commercial X historical data for 180 days is strictly paywalled by X Corporation at $100+/mo. The modular connector allows instant plug-and-play if legitimate tokens are provided.
-2. **Execution Slippage:** The backtest includes a fixed 10 bps cost assumption. In fast-moving crypto markets, market impact during high-volatility spikes could require adaptive spread modeling.
-3. **Ensemble & Horizon Interaction:** Currently, six independent models are fitted for horizons $n+0$ through $n+5$. Future iterations could test joint multi-task neural architectures.
+2. **Execution Slippage:** The backtest applies a 10 bps fixed cost assumption. In volatile regime breaks, market impact and liquidity spreads may fluctuate dynamically.
+3. **Signal Strength in Efficient Markets:** Out-of-sample directional accuracy on hourly BTC bars hovers near 50-53%, reflecting efficient market pricing. Excess turnover quickly erodes gross alpha.
 """
         target_path = self.reports_dir / "evaluation_report.md"
         with open(target_path, "w", encoding="utf-8") as f:
@@ -287,7 +309,7 @@ The following visual artifacts were generated directly from the out-of-sample va
                 HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2b6cb0"), spaceAfter=12),
                 Paragraph("1. Executive Summary & Free-First Architecture", heading2),
                 Paragraph(
-                    "This report documents out-of-sample predictive performance across 6 horizons (n+0 to n+5) using exclusively free tools, local VADER NLP sentiment analysis, and chronological walk-forward cross validation without lookahead leakage.",
+                    "This report documents out-of-sample predictive performance across 6 horizons (n+0 to n+5) using exclusively free tools, local VADER NLP sentiment analysis, and chronological purged walk-forward cross validation without lookahead leakage.",
                     body_style,
                 ),
                 Spacer(1, 10),
@@ -324,20 +346,20 @@ The following visual artifacts were generated directly from the out-of-sample va
 
             # Build Trading Strategy Table
             story.append(Paragraph("3. Quantitative Trading Strategy Performance", heading2))
-            strat_data = [["Model", "Horizon", "Cum Ret (%)", "Sharpe", "Sortino", "Max DD (%)", "Win Rate (%)", "Trades"]]
+            strat_data = [["Model", "Horizon", "Cum Ret (%)", "Exposure (%)", "Sharpe", "Sortino", "Max DD (%)", "Trades"]]
             for _, r in backtest_results_df.iterrows():
                 strat_data.append([
                     str(r['model_name']).replace("_", " ").title()[:14],
                     f"n+{int(r['horizon'])}",
                     f"{r['cumulative_return_pct']:+.1f}%",
+                    f"{r.get('exposure_pct', 0.0):.1f}%",
                     f"{r['sharpe_ratio']:.2f}",
                     f"{r['sortino_ratio']:.2f}",
                     f"{r['max_drawdown_pct']:.1f}%",
-                    f"{r['win_rate_pct']:.1f}%",
                     str(int(r['total_trades'])),
                 ])
 
-            st = Table(strat_data, colWidths=[100, 50, 70, 55, 55, 65, 65, 55])
+            st = Table(strat_data, colWidths=[95, 45, 65, 65, 55, 55, 65, 45])
             st.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -354,6 +376,6 @@ The following visual artifacts were generated directly from the out-of-sample va
             doc.build(story)
             logger.info(f"Successfully compiled PDF report to {pdf_path}")
         except Exception as e:
-            logger.warning(f"ReportLab PDF compilation skipped or encountered error: {e}")
+            logger.warning(f"ReportLab PDF compilation error: {e}")
 
         return pdf_path

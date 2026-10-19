@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-from src.features import FeatureEngineer
+from src.features import FeatureEngineer, PRICE_FEATURE_COLS, SENTIMENT_FEATURE_COLS, ALL_FEATURE_COLS
 
 
 def test_aggregate_posts():
@@ -29,7 +29,6 @@ def test_aggregate_posts():
 
 def test_price_features():
     dates = pd.date_range("2024-01-01 00:00:00", periods=30, freq="1h", tz="UTC")
-    # Upward trending prices
     closes = np.linspace(40000, 43000, 30)
     prices_df = pd.DataFrame({
         "open": closes - 50,
@@ -44,7 +43,14 @@ def test_price_features():
 
     assert "return_1" in price_feats.columns
     assert "rsi_14" in price_feats.columns
-    assert "macd_normalized" in price_feats.columns
+    assert "macd_diff" in price_feats.columns
     assert not price_feats["return_1"].isna().any()
     # In an uptrend, RSI should be above 0.5 (normalized)
     assert price_feats["rsi_14"].iloc[-1] > 0.5
+
+
+def test_feature_registries():
+    assert len(PRICE_FEATURE_COLS) == 13
+    assert len(SENTIMENT_FEATURE_COLS) == 11
+    assert len(ALL_FEATURE_COLS) == 24
+    assert "sentiment_price_interaction" in SENTIMENT_FEATURE_COLS

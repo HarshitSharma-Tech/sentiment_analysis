@@ -1,12 +1,12 @@
 """
 Model Training and Persistence Module
-Implements multi-horizon model architectures:
+Implements regularized, variance-controlled multi-horizon model architectures:
 1. Persistence Baseline (Zero-return benchmark)
-2. Ridge Regression (L2 regularized linear model)
-3. Random Forest Regressor
-4. HistGradientBoostingRegressor (Modern, fast gradient boosted trees)
+2. Ridge Regression (L2 regularized with RidgeCV tuning on training folds)
+3. Random Forest Regressor (Constrained depth, sqrt feature sampling, large min leaf)
+4. HistGradientBoostingRegressor (Constrained depth, strong L2 penalty, conservative learning rate)
 
-Saves trained model artifacts, metadata, and feature importance using Joblib.
+Saves trained model artifacts, scalers, and metadata using Joblib.
 """
 
 from datetime import datetime, timezone
@@ -18,7 +18,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import Ridge, RidgeCV
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class PersistenceModel:
 
 
 class ModelFactory:
-    """Instantiates standardized regressors for multi-horizon price forecasting."""
+    """Instantiates standardized regressors tuned for noisy financial time-series."""
 
     SUPPORTED_MODELS = ["persistence", "ridge", "random_forest", "hist_gradient_boosting"]
 
@@ -49,21 +49,24 @@ class ModelFactory:
         if name == "persistence":
             return PersistenceModel()
         elif name == "ridge":
-            return Ridge(alpha=10.0, random_state=random_state)
+            # RidgeCV automatically cross-validates alpha on training folds to shrink noise
+            return RidgeCV(alphas=[10.0, 50.0, 100.0, 500.0, 1000.0])
         elif name == "random_forest":
             return RandomForestRegressor(
-                n_estimators=40,
-                max_depth=5,
-                min_samples_leaf=5,
+                n_estimators=50,
+                max_depth=4,
+                min_samples_leaf=25,
+                max_features="sqrt",
                 random_state=random_state,
                 n_jobs=-1,
             )
         elif name in ("hist_gradient_boosting", "histgradientboosting"):
             return HistGradientBoostingRegressor(
-                max_iter=40,
-                max_depth=4,
-                min_samples_leaf=10,
-                learning_rate=0.05,
+                max_iter=50,
+                max_depth=3,
+                min_samples_leaf=30,
+                l2_regularization=25.0,
+                learning_rate=0.03,
                 random_state=random_state,
             )
         else:
@@ -94,7 +97,7 @@ class MultiHorizonPipeline:
         X_train: pd.DataFrame,
         y_train: pd.Series,
     ) -> None:
-        """Fit scaler and model for a single horizon."""
+        """Fit scaler and model for a single horizon strictly on training data."""
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X_train)
 

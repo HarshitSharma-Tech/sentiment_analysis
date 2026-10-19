@@ -33,6 +33,27 @@ def test_strategy_backtester_metrics():
     assert res.win_rate_pct > 80.0
     assert res.sharpe_ratio > 0
     assert res.max_drawdown_pct <= 0.0
+    assert 0.0 <= res.exposure_pct <= 100.0
+    assert res.turnover_pct >= 0.0
+    assert len(res.no_trade_curve) == 100
+
+
+def test_evaluate_all_models_summary():
+    dates = pd.date_range("2024-01-01 00:00:00", periods=50, freq="1h", tz="UTC")
+    preds_df = pd.DataFrame({
+        "model_name": ["ridge"] * 50 + ["random_forest"] * 50,
+        "horizon": [1] * 100,
+        "forecast_timestamp": list(dates.strftime("%Y-%m-%d %H:%M:%S")) * 2,
+        "actual_return": [0.002, -0.001] * 50,
+        "predicted_return": [0.003, -0.001] * 50,
+    })
+
+    backtester = StrategyBacktester(initial_capital=100_000.0, frequency="1h")
+    summary = backtester.evaluate_all_models(preds_df, horizon=1)
+    assert len(summary) >= 3  # no_trade_baseline, ridge, random_forest
+    assert "no_trade_baseline" in summary["model_name"].values
+    assert "exposure_pct" in summary.columns
+    assert "turnover_pct" in summary.columns
 
 
 def test_zero_volatility_handling():
@@ -52,3 +73,4 @@ def test_zero_volatility_handling():
     assert res.sharpe_ratio == 0.0
     assert res.sortino_ratio == 0.0
     assert res.cumulative_return_pct == 0.0
+    assert res.exposure_pct == 0.0

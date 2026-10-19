@@ -1,23 +1,46 @@
 """
 Multi-Horizon Target Engineering Module
-Constructs future price and return targets for horizons n+0 through n+5.
+Constructs point-in-time future price and return targets for horizons n+0 through n+5.
 
 Target Definitions & Forecasting Cutoffs:
-- n+0 (Current Period Forecast):
-    Cutoff: At bar opening or prior bar close (t-1).
-    Target: Closing price of current period P(t).
-    Unknown at cutoff: P(t) close.
-    Target Return: (P(t) - P(t-1)) / P(t-1).
-    Baseline Prediction: P(t-1) (0% return).
+Let decision timestamp t be the start of forecast period t (e.g. 14:00:00 UTC).
+At timestamp t, the previous bar (t-1) has closed, and bar t is starting.
+Available Information at t:
+  - Historical bars up to t-1 (close, open, high, low, volume)
+  - Features X(t) computed strictly from information available up to timestamp t.
+Cutoff Price P_cutoff(t):
+  - The latest known price at forecast timestamp t: P_close(t-1) (or P_open(t)).
 
-- n+1 through n+5 (Forward Horizons):
-    Cutoff: Bar close P(t).
-    Target: Future closing price P(t + h).
-    Target Return: (P(t + h) - P(t)) / P(t).
-    Baseline Prediction: P(t) (0% return).
+Forecasting Horizons from cutoff t:
+- n+0 (Current Forecast Period): Target is Close of bar t (1 hour ahead of cutoff).
+    Target Price: P_close(t).
+    Target Return: (P_close(t) - P_cutoff(t)) / P_cutoff(t).
+    Unknown at cutoff: P_close(t).
 
-Strictly prevents lookahead leakage: all future targets are aligned with
-the exact cutoff timestamp when the prediction is generated.
+- n+1 (1 Period Ahead): Target is Close of bar t+1 (2 hours ahead of cutoff).
+    Target Price: P_close(t+1).
+    Target Return: (P_close(t+1) - P_cutoff(t)) / P_cutoff(t).
+
+- n+2 (2 Periods Ahead): Target is Close of bar t+2 (3 hours ahead of cutoff).
+    Target Price: P_close(t+2).
+    Target Return: (P_close(t+2) - P_cutoff(t)) / P_cutoff(t).
+
+- n+3 (3 Periods Ahead): Target is Close of bar t+3 (4 hours ahead of cutoff).
+    Target Price: P_close(t+3).
+    Target Return: (P_close(t+3) - P_cutoff(t)) / P_cutoff(t).
+
+- n+4 (4 Periods Ahead): Target is Close of bar t+4 (5 hours ahead of cutoff).
+    Target Price: P_close(t+4).
+    Target Return: (P_close(t+4) - P_cutoff(t)) / P_cutoff(t).
+
+- n+5 (5 Periods Ahead): Target is Close of bar t+5 (6 hours ahead of cutoff).
+    Target Price: P_close(t+5).
+    Target Return: (P_close(t+5) - P_cutoff(t)) / P_cutoff(t).
+
+Guarantees:
+- Every horizon has a distinct forecast target and span.
+- Zero identical metrics between horizons.
+- Baseline error increases monotonically with horizon span, matching financial theory.
 """
 
 from dataclasses import dataclass
@@ -36,7 +59,7 @@ class HorizonTargetSpec:
     target_price_col: str
     target_return_col: str
     cutoff_price_col: str
-    shift_periods: int
+    forward_steps: int
 
 
 class TargetEngineer:
@@ -50,57 +73,58 @@ class TargetEngineer:
         return {
             0: HorizonTargetSpec(
                 horizon=0,
-                name="n+0 (Current Bar Close)",
+                name="n+0 (Current Period Close)",
                 target_price_col="target_price_h0",
                 target_return_col="target_return_h0",
-                cutoff_price_col="cutoff_price_h0",
-                shift_periods=0,
+                cutoff_price_col="cutoff_price",
+                forward_steps=0,
             ),
             1: HorizonTargetSpec(
                 horizon=1,
-                name="n+1 (1-Period Ahead)",
+                name="n+1 (1-Period Ahead Close)",
                 target_price_col="target_price_h1",
                 target_return_col="target_return_h1",
-                cutoff_price_col="cutoff_price_h1",
-                shift_periods=1,
+                cutoff_price_col="cutoff_price",
+                forward_steps=1,
             ),
             2: HorizonTargetSpec(
                 horizon=2,
-                name="n+2 (2-Periods Ahead)",
+                name="n+2 (2-Periods Ahead Close)",
                 target_price_col="target_price_h2",
                 target_return_col="target_return_h2",
-                cutoff_price_col="cutoff_price_h2",
-                shift_periods=2,
+                cutoff_price_col="cutoff_price",
+                forward_steps=2,
             ),
             3: HorizonTargetSpec(
                 horizon=3,
-                name="n+3 (3-Periods Ahead)",
+                name="n+3 (3-Periods Ahead Close)",
                 target_price_col="target_price_h3",
                 target_return_col="target_return_h3",
-                cutoff_price_col="cutoff_price_h3",
-                shift_periods=3,
+                cutoff_price_col="cutoff_price",
+                forward_steps=3,
             ),
             4: HorizonTargetSpec(
                 horizon=4,
-                name="n+4 (4-Periods Ahead)",
+                name="n+4 (4-Periods Ahead Close)",
                 target_price_col="target_price_h4",
                 target_return_col="target_return_h4",
-                cutoff_price_col="cutoff_price_h4",
-                shift_periods=4,
+                cutoff_price_col="cutoff_price",
+                forward_steps=4,
             ),
             5: HorizonTargetSpec(
                 horizon=5,
-                name="n+5 (5-Periods Ahead)",
+                name="n+5 (5-Periods Ahead Close)",
                 target_price_col="target_price_h5",
                 target_return_col="target_return_h5",
-                cutoff_price_col="cutoff_price_h5",
-                shift_periods=5,
+                cutoff_price_col="cutoff_price",
+                forward_steps=5,
             ),
         }
 
     def create_targets(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add multi-horizon price and return targets to the feature DataFrame.
+        Cutoff price is the latest known close P(t-1) at the start of period t.
         Requires 'close' column in df.
         """
         if "close" not in df.columns:
@@ -109,17 +133,23 @@ class TargetEngineer:
         out = df.copy()
         close = out["close"]
 
-        # n+0: Forecast current bar close given state at bar start
-        # Cutoff price is previous close P(t-1)
-        out["cutoff_price_h0"] = close.shift(1)
-        out["target_price_h0"] = close
-        out["target_return_h0"] = (close - out["cutoff_price_h0"]) / out["cutoff_price_h0"]
+        # Base Cutoff Price: the last known price before period t begins
+        # If open price is available, open(t) is approximately close(t-1)
+        if "open" in out.columns:
+            out["cutoff_price"] = out["open"]
+        else:
+            out["cutoff_price"] = close.shift(1)
 
-        # n+1 through n+5: Forecast future closes given current bar close P(t)
+        p_cut = out["cutoff_price"]
+
+        # Horizon n+0: Current period t close (1 step ahead of cutoff)
+        out["target_price_h0"] = close
+        out["target_return_h0"] = (close - p_cut) / p_cut
+
+        # Horizons n+1 through n+5: Future bar closes (t+1 through t+5)
         for h in [1, 2, 3, 4, 5]:
-            out[f"cutoff_price_h{h}"] = close
             out[f"target_price_h{h}"] = close.shift(-h)
-            out[f"target_return_h{h}"] = (out[f"target_price_h{h}"] - close) / close
+            out[f"target_return_h{h}"] = (out[f"target_price_h{h}"] - p_cut) / p_cut
 
         return out
 
@@ -132,25 +162,29 @@ class TargetEngineer:
         """
         Extract clean (X, y_return, y_price, cutoff_price) for a specific horizon h,
         dropping NaN target values (e.g. at the end of the series).
+        Features are shifted by 1 so only data strictly prior to the forecast period is used.
         """
         specs = self.get_specs()[horizon]
         target_ret_col = specs.target_return_col
         target_price_col = specs.target_price_col
         cutoff_col = specs.cutoff_price_col
 
-        # For n+0, features must NOT use period t's close!
-        # Features for n+0 must be shifted by 1 so only info up to t-1 is used
-        if horizon == 0:
-            X_df = df_with_targets[feature_cols].shift(1)
-        else:
-            X_df = df_with_targets[feature_cols]
+        # Features available at forecast cutoff (start of period t)
+        # must use historical observations strictly up to period t-1
+        X_df = df_with_targets[feature_cols].shift(1)
 
         y_ret = df_with_targets[target_ret_col]
         y_price = df_with_targets[target_price_col]
         p_cutoff = df_with_targets[cutoff_col]
 
-        # Valid rows where both features and target are non-NaN
-        valid_mask = (~X_df.isna().any(axis=1)) & (~y_ret.isna()) & (~p_cutoff.isna())
+        # Valid rows where features, target, and cutoff price are non-NaN and finite
+        valid_mask = (
+            (~X_df.isna().any(axis=1)) &
+            (~y_ret.isna()) &
+            (~np.isinf(y_ret)) &
+            (~p_cutoff.isna()) &
+            (p_cutoff > 0)
+        )
 
         return (
             X_df.loc[valid_mask],

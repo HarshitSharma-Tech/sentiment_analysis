@@ -1,5 +1,5 @@
 # HISTORICAL / DEMO Sentiment Outlook: BTC-USD
-**Generated At:** 2026-10-19 16:09:59 UTC  
+**Generated At:** 2026-10-19 16:31:55 UTC  
 **Data Ingestion Source:** Reproducible Sample Social Data + Real Market Prices  
 **Data Observation Window:** 2026-04-22 to 2026-10-18  
 
@@ -21,25 +21,25 @@
 ---
 
 ## 2. Recent Market News & Contextual Intelligence
-*(Collected via 100% Free Public Financial RSS Feeds - CoinDesk, Cointelegraph, Yahoo Finance)*
+*(Collected via 100% Free Public Financial RSS Feeds - CoinDesk, Cointelegraph, Google News)*
+
+- **[Bitcoin is rejected at $83K as US bond yields reverse higher with equities](https://cointelegraph.com/markets/bitcoin-is-rejected-at-83k-as-us-bond-yields-reverse-higher-with-equities?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound)**  
+  *Source:* Cointelegraph | *Published:* 2026-10-19 16:05:57 | *NLP Polarity:* 🔴 Neg (`-0.57`)
 
 - **[Zerohash rolls out a new tool to move crypto without copying wallet addresses](https://www.coindesk.com/business/2026/10/19/zerohash-rolls-out-a-new-tool-to-move-crypto-without-copying-wallet-addresses)**  
   *Source:* CoinDesk | *Published:* 2026-10-19 14:58:40 | *NLP Polarity:* ⚪ Neu (`+0.00`)
 
+- **[Current price of Bitcoin for Oct. 19, 2026 - Fortune](https://news.google.com/rss/articles/CBMiZ0FVX3lxTE1vb3A0Q24zaWUwM0E5LXNKeEc3VW5RMF9OZEh3UDZ2TE42RlhTelFvakpHWFQzZTc1WEFIVlBzV25XZVpJUTlxX0RXUnAtblluQUtQWGV5QVdLOGtmNmlINDVvc2tRZk0?oc=5)**  
+  *Source:* Google News Crypto | *Published:* 2026-10-19 14:02:12 | *NLP Polarity:* ⚪ Neu (`+0.00`)
+
+- **[Current price of Ethereum for Oct. 19, 2026 - Fortune](https://news.google.com/rss/articles/CBMiaEFVX3lxTFBNWWd3blY0NUhldlZKclJveGd4Ym1iRHBWWjVVSkdlcTdKbVptaC1xUUswbnQwR1B3aXNjTXBzNWV4eC1QamJYazhHaDNEZ3JaYlFscXhIWDA0NG9jeWlCa2lEQWlFT0It?oc=5)**  
+  *Source:* Google News Crypto | *Published:* 2026-10-19 14:02:11 | *NLP Polarity:* ⚪ Neu (`+0.00`)
+
+- **[Crypto SWOT: The CoinDesk 20 Index surged 52.7% in Q3 2026, while Bitcoin rose 42.7% - Kitco](https://news.google.com/rss/articles/CBMisgFBVV95cUxOQ0Zmcm9mZjM2Z2JpTVZfdjhyQ25oRlMzRERjVHJZSjhRSVFfdmRmSDl5R1hwYlJjT2UyN2VDSlhEejZIZmRhUUZGMmJFUFFaWDVPa0lidjBWX3Q5V3hacUtCelpKc0x5aXhlTFoycThIYzRHSXlTSkpNZDhvQzl4TUVJQzJaYi1CTmhodTVJR0RPbUJzczFtNFVUUTRQbzItZWtwREJCT3Jpcm53MUJIYmxn?oc=5)**  
+  *Source:* Google News Crypto | *Published:* 2026-10-19 13:50:47 | *NLP Polarity:* ⚪ Neu (`+0.00`)
+
 - **[Made an ‘honest’ mistake with crypto taxes? New bill offers way out](https://cointelegraph.com/magazine/made-an-honest-mistake-with-crypto-taxes-new-bill-offers-way-out?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound)**  
   *Source:* Cointelegraph | *Published:* 2026-10-19 13:30:00 | *NLP Polarity:* 🔴 Neg (`-0.23`)
-
-- **[Here’s what happened in crypto today](https://cointelegraph.com/news/what-happened-in-crypto-today?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound)**  
-  *Source:* Cointelegraph | *Published:* 2026-10-19 13:19:50 | *NLP Polarity:* ⚪ Neu (`+0.00`)
-
-- **[Public companies object to OKX-ICE’s tokenized stock plan](https://cointelegraph.com/news/public-companies-object-okx-ice-tokenized-stock?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound)**  
-  *Source:* Cointelegraph | *Published:* 2026-10-19 13:13:53 | *NLP Polarity:* 🟢 Pos (`+0.39`)
-
-- **[Strategy buys $22M in Bitcoin, repurchases $193M in STRC](https://cointelegraph.com/news/strategy-btc-22-million-buy-strc-buyback-193-million?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound)**  
-  *Source:* Cointelegraph | *Published:* 2026-10-19 12:30:00 | *NLP Polarity:* 🟢 Pos (`+0.57`)
-
-- **[Cardano founder Charles Hoskinson is building a new programming language for the network](https://www.coindesk.com/tech/2026/10/19/cardano-founder-charles-hoskinson-is-building-a-new-programming-language-for-the-network)**  
-  *Source:* CoinDesk | *Published:* 2026-10-19 12:16:58 | *NLP Polarity:* ⚪ Neu (`+0.00`)
 
 ---
 

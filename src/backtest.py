@@ -6,14 +6,16 @@ Evaluates:
 - Sortino Ratio (annualized downside deviation)
 - Maximum Drawdown (MDD)
 - Cumulative Return & Out-of-Sample Equity Curves
+- Exposure (% time invested in the market)
+- Turnover (% average position change per bar)
 - Win Rate & Trade Count
-- Realistic Transaction Costs & Slippage (basis points)
-- Buy & Hold Benchmark comparison
+- Realistic Transaction Costs & Slippage (10 bps)
+- Buy & Hold Benchmark AND No-Trade Baseline comparisons
 
 Strict Guarantees:
 - Calculations derived strictly from strategy returns (not price prediction errors)
 - Resilient against zero-volatility and sparse downside edge cases
-- Explicitly labels hypothetical backtests
+- Explicitly labels hypothetical backtests without fabricating profitability
 """
 
 from dataclasses import dataclass
@@ -31,6 +33,8 @@ class BacktestResult:
     horizon: int
     total_bars: int
     total_trades: int
+    exposure_pct: float
+    turnover_pct: float
     cumulative_return_pct: float
     annualized_return_pct: float
     annualized_volatility_pct: float
@@ -40,8 +44,10 @@ class BacktestResult:
     win_rate_pct: float
     benchmark_cumulative_pct: float
     benchmark_sharpe: float
+    benchmark_max_drawdown_pct: float
     equity_curve: pd.Series
     benchmark_curve: pd.Series
+    no_trade_curve: pd.Series
 
 
 class StrategyBacktester:
@@ -96,23 +102,24 @@ class StrategyBacktester:
         positions = np.zeros(n, dtype=float)
         positions[pred_rets > self.signal_threshold] = 1.0
 
-        # Position changes incur transaction costs
+        # Position changes incur transaction costs (slippage + fee)
         pos_shift = np.roll(positions, 1)
         pos_shift[0] = 0.0
         trades = np.abs(positions - pos_shift)
         trade_costs = trades * self.transaction_cost_rate
 
         # 2. Strategy period returns
-        # Return at bar t is earned from position decided at t (or t-1)
-        # Here position decided based on forecast is held, yielding actual return minus cost
         strat_returns = (positions * actual_rets) - trade_costs
 
         # 3. Cumulative equity curves
         equity = self.initial_capital * np.cumprod(1.0 + strat_returns)
         benchmark_equity = self.initial_capital * np.cumprod(1.0 + actual_rets)
+        no_trade_equity = np.full(n, self.initial_capital, dtype=float)
 
         # 4. Performance metrics
         total_trades = int(np.sum(trades > 0))
+        exposure = float(np.mean(positions > 0) * 100.0)
+        turnover = float(np.mean(trades) * 100.0)
         cum_ret = float((equity[-1] / self.initial_capital - 1.0) * 100.0)
         bm_cum_ret = float((benchmark_equity[-1] / self.initial_capital - 1.0) * 100.0)
 
@@ -145,14 +152,18 @@ class StrategyBacktester:
         else:
             sortino = 0.0
 
-        # Benchmark Sharpe
+        # Benchmark Sharpe & Drawdown
         bm_std = float(np.std(actual_rets))
         if bm_std > 1e-8:
             bm_sharpe = float(np.mean(actual_rets - rf_per_period) / bm_std * np.sqrt(self.periods_per_year))
         else:
             bm_sharpe = 0.0
 
-        # Maximum Drawdown
+        bm_running_max = np.maximum.accumulate(benchmark_equity)
+        bm_drawdowns = (benchmark_equity - bm_running_max) / bm_running_max
+        bm_max_dd = float(np.min(bm_drawdowns) * 100.0)
+
+        # Strategy Maximum Drawdown
         running_max = np.maximum.accumulate(equity)
         drawdowns = (equity - running_max) / running_max
         max_dd = float(np.min(drawdowns) * 100.0)
@@ -167,12 +178,15 @@ class StrategyBacktester:
         timestamps = sub["forecast_timestamp"]
         equity_series = pd.Series(equity, index=timestamps, name="Strategy_Equity")
         benchmark_series = pd.Series(benchmark_equity, index=timestamps, name="Benchmark_Equity")
+        no_trade_series = pd.Series(no_trade_equity, index=timestamps, name="No_Trade_Equity")
 
         return BacktestResult(
             model_name=model_name,
             horizon=horizon,
             total_bars=n,
             total_trades=total_trades,
+            exposure_pct=exposure,
+            turnover_pct=turnover,
             cumulative_return_pct=cum_ret,
             annualized_return_pct=ann_return,
             annualized_volatility_pct=ann_vol,
@@ -182,8 +196,10 @@ class StrategyBacktester:
             win_rate_pct=win_rate,
             benchmark_cumulative_pct=bm_cum_ret,
             benchmark_sharpe=bm_sharpe,
+            benchmark_max_drawdown_pct=bm_max_dd,
             equity_curve=equity_series,
             benchmark_curve=benchmark_series,
+            no_trade_curve=no_trade_series,
         )
 
     def evaluate_all_models(
@@ -194,9 +210,24 @@ class StrategyBacktester:
     ) -> pd.DataFrame:
         """Run backtest across all models and produce a comparison summary DataFrame."""
         if models is None:
-            models = list(predictions_df["model_name"].unique())
+            models = [m for m in predictions_df["model_name"].unique() if m != "persistence"]
 
         rows = []
+        # Include No-Trade baseline row
+        rows.append({
+            "model_name": "no_trade_baseline",
+            "horizon": horizon,
+            "cumulative_return_pct": 0.0,
+            "exposure_pct": 0.0,
+            "turnover_pct": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "max_drawdown_pct": 0.0,
+            "win_rate_pct": 0.0,
+            "total_trades": 0,
+            "benchmark_cumulative_pct": 0.0,
+        })
+
         for m in models:
             try:
                 res = self.run_backtest(predictions_df, model_name=m, horizon=horizon)
@@ -204,15 +235,20 @@ class StrategyBacktester:
                     "model_name": m,
                     "horizon": horizon,
                     "cumulative_return_pct": res.cumulative_return_pct,
+                    "exposure_pct": res.exposure_pct,
+                    "turnover_pct": res.turnover_pct,
                     "sharpe_ratio": res.sharpe_ratio,
                     "sortino_ratio": res.sortino_ratio,
                     "max_drawdown_pct": res.max_drawdown_pct,
                     "win_rate_pct": res.win_rate_pct,
                     "total_trades": res.total_trades,
                     "benchmark_cumulative_pct": res.benchmark_cumulative_pct,
-                    "benchmark_sharpe": res.benchmark_sharpe,
                 })
             except Exception as e:
                 logger.warning(f"Backtest failed for {m}: {e}")
+
+        # Update benchmark cumulative return for no_trade row if results exist
+        if len(rows) > 1:
+            rows[0]["benchmark_cumulative_pct"] = rows[1]["benchmark_cumulative_pct"]
 
         return pd.DataFrame(rows)

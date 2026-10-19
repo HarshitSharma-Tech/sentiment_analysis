@@ -6,8 +6,10 @@ Computes strictly point-in-time, leakage-free features from:
 
 Strict Guarantees:
 - Zero forward-looking lookahead bias
-- Consistent UTC chronological timestamps
-- Engagement weighting with robust clipping against viral post anomalies
+- Past-only rolling statistics
+- Engagement weighting with logarithmic clipping
+- Curated high-signal feature set (avoids feature proliferation & noise overfitting)
+- Supports explicit ablation: Price-Only vs. Price+Sentiment
 """
 
 import logging
@@ -18,8 +20,42 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+# Feature column registries for ablation comparisons
+PRICE_FEATURE_COLS = [
+    "return_1",
+    "return_3",
+    "return_6",
+    "return_12",
+    "return_24",
+    "price_volatility_6",
+    "price_volatility_24",
+    "sma_ratio_6",
+    "sma_ratio_24",
+    "macd_diff",
+    "rsi_14",
+    "volume_change_1",
+    "volume_ratio_24",
+]
+
+SENTIMENT_FEATURE_COLS = [
+    "mean_compound",
+    "sentiment_dispersion",
+    "pos_proportion",
+    "neg_proportion",
+    "post_count_log",
+    "post_volume_change_1",
+    "engagement_weighted_sentiment",
+    "sentiment_rolling_mean_6",
+    "sentiment_rolling_mean_24",
+    "sentiment_momentum",
+    "sentiment_price_interaction",
+]
+
+ALL_FEATURE_COLS = PRICE_FEATURE_COLS + SENTIMENT_FEATURE_COLS
+
+
 class FeatureEngineer:
-    """Computes sentiment and price-derived feature matrices."""
+    """Computes curated price-derived and sentiment feature matrices."""
 
     def __init__(
         self,
@@ -27,8 +63,8 @@ class FeatureEngineer:
         price_windows: Optional[List[int]] = None,
         rsi_period: int = 14,
     ):
-        self.sentiment_windows = sentiment_windows or [3, 6, 12, 24]
-        self.price_windows = price_windows or [3, 6, 12, 24]
+        self.sentiment_windows = sentiment_windows or [6, 24]
+        self.price_windows = price_windows or [6, 24]
         self.rsi_period = rsi_period
 
     # =========================================================================
@@ -110,45 +146,30 @@ class FeatureEngineer:
 
     def build_sentiment_features(self, agg_sentiment: pd.DataFrame) -> pd.DataFrame:
         """
-        Derive dynamic temporal sentiment signals (lags, rolling averages, volume deltas).
-        Zero lookahead: all rolling statistics use only past observations.
+        Derive dynamic temporal sentiment signals (past-only rolling averages, volume deltas).
         """
         if agg_sentiment.empty:
             return pd.DataFrame()
 
-        feats = agg_sentiment.copy()
+        feats = pd.DataFrame(index=agg_sentiment.index)
 
-        # 1. Post Volume Dynamics
-        feats["post_volume_change_1"] = feats["post_count"].diff().fillna(0.0)
-        feats["post_volume_pct_change_1"] = (
-            feats["post_count"].pct_change().replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        # Core point-in-time sentiment signals
+        feats["mean_compound"] = agg_sentiment["mean_compound"].fillna(0.0)
+        feats["sentiment_dispersion"] = agg_sentiment["sentiment_dispersion"].fillna(0.0)
+        feats["pos_proportion"] = agg_sentiment["pos_proportion"].fillna(0.0)
+        feats["neg_proportion"] = agg_sentiment["neg_proportion"].fillna(0.0)
+        feats["post_count_log"] = np.log1p(agg_sentiment["post_count"].fillna(0.0))
+        feats["post_volume_change_1"] = agg_sentiment["post_count"].diff().fillna(0.0)
+        feats["engagement_weighted_sentiment"] = agg_sentiment["engagement_weighted_sentiment"].fillna(0.0)
+
+        # Rolling sentiment trends
+        feats["sentiment_rolling_mean_6"] = (
+            agg_sentiment["mean_compound"].rolling(window=6, min_periods=1).mean().fillna(0.0)
         )
-
-        # 2. Lagged Sentiment Scores (1, 2, 3 periods back)
-        for lag in [1, 2, 3]:
-            feats[f"sentiment_compound_lag_{lag}"] = feats["mean_compound"].shift(lag).fillna(0.0)
-            feats[f"eng_sentiment_lag_{lag}"] = feats["engagement_weighted_sentiment"].shift(lag).fillna(0.0)
-            feats[f"post_count_lag_{lag}"] = feats["post_count"].shift(lag).fillna(0.0)
-
-        # 3. Rolling Sentiment Means and Volatility
-        for w in self.sentiment_windows:
-            feats[f"sentiment_rolling_mean_{w}"] = (
-                feats["mean_compound"].rolling(window=w, min_periods=1).mean().fillna(0.0)
-            )
-            feats[f"sentiment_rolling_std_{w}"] = (
-                feats["mean_compound"].rolling(window=w, min_periods=1).std().fillna(0.0)
-            )
-            feats[f"post_count_rolling_sum_{w}"] = (
-                feats["post_count"].rolling(window=w, min_periods=1).sum().fillna(0.0)
-            )
-
-        # 4. Sentiment Momentum (Fast - Slow)
-        if len(self.sentiment_windows) >= 2:
-            fast_w = self.sentiment_windows[0]
-            slow_w = self.sentiment_windows[-1]
-            feats["sentiment_momentum"] = (
-                feats[f"sentiment_rolling_mean_{fast_w}"] - feats[f"sentiment_rolling_mean_{slow_w}"]
-            )
+        feats["sentiment_rolling_mean_24"] = (
+            agg_sentiment["mean_compound"].rolling(window=24, min_periods=1).mean().fillna(0.0)
+        )
+        feats["sentiment_momentum"] = feats["sentiment_rolling_mean_6"] - feats["sentiment_rolling_mean_24"]
 
         return feats
 
@@ -171,49 +192,45 @@ class FeatureEngineer:
 
         feats = pd.DataFrame(index=p.index)
 
-        # 1. Log Returns and Percentage Changes
+        # 1. Multi-horizon lagged returns
         feats["return_1"] = (close / close.shift(1) - 1.0).fillna(0.0)
-        feats["log_return_1"] = np.log(close / close.shift(1)).fillna(0.0)
+        feats["return_3"] = (close / close.shift(3) - 1.0).fillna(0.0)
+        feats["return_6"] = (close / close.shift(6) - 1.0).fillna(0.0)
+        feats["return_12"] = (close / close.shift(12) - 1.0).fillna(0.0)
+        feats["return_24"] = (close / close.shift(24) - 1.0).fillna(0.0)
 
-        for w in [3, 6, 12, 24]:
-            feats[f"return_{w}"] = (close / close.shift(w) - 1.0).fillna(0.0)
-            feats[f"price_volatility_{w}"] = feats["return_1"].rolling(window=w, min_periods=2).std().fillna(0.0)
+        # 2. Rolling price return volatility
+        feats["price_volatility_6"] = feats["return_1"].rolling(window=6, min_periods=2).std().fillna(0.0)
+        feats["price_volatility_24"] = feats["return_1"].rolling(window=24, min_periods=2).std().fillna(0.0)
 
-        # 2. Moving Average Ratios (Close / SMA - 1)
-        for w in self.price_windows:
-            sma = close.rolling(window=w, min_periods=1).mean()
-            feats[f"sma_ratio_{w}"] = (close / sma - 1.0).fillna(0.0)
+        # 3. Moving Average Ratios (Close / SMA - 1)
+        sma_6 = close.rolling(window=6, min_periods=1).mean()
+        sma_24 = close.rolling(window=24, min_periods=1).mean()
+        feats["sma_ratio_6"] = (close / sma_6 - 1.0).fillna(0.0)
+        feats["sma_ratio_24"] = (close / sma_24 - 1.0).fillna(0.0)
 
-        # 3. Exponential Moving Averages (EMA 12 and 26)
+        # 4. MACD Signal Difference
         ema_12 = close.ewm(span=12, adjust=False).mean()
         ema_26 = close.ewm(span=26, adjust=False).mean()
         macd = ema_12 - ema_26
         macd_signal = macd.ewm(span=9, adjust=False).mean()
+        feats["macd_diff"] = ((macd - macd_signal) / close).fillna(0.0)
 
-        feats["macd_normalized"] = (macd / close).fillna(0.0)
-        feats["macd_signal_normalized"] = (macd_signal / close).fillna(0.0)
-        feats["macd_diff"] = (macd - macd_signal) / close
-
-        # 4. Relative Strength Index (RSI)
+        # 5. Relative Strength Index (RSI 14)
         delta = close.diff()
         gain = delta.clip(lower=0)
         loss = -delta.clip(upper=0)
         avg_gain = gain.rolling(window=self.rsi_period, min_periods=self.rsi_period).mean()
         avg_loss = loss.rolling(window=self.rsi_period, min_periods=self.rsi_period).mean()
 
-        # Handle zero loss (pure uptrend -> RSI = 100) or zero gain (pure downtrend -> RSI = 0)
         rs = np.where(avg_loss > 1e-12, avg_gain / avg_loss, np.where(avg_gain > 1e-12, 1000.0, 1.0))
         rsi = 100.0 - (100.0 / (1.0 + rs))
         feats["rsi_14"] = (pd.Series(rsi, index=p.index).fillna(50.0)) / 100.0  # Normalized to [0, 1]
 
-        # 5. Price Momentum & Range
-        feats["high_low_spread"] = ((p["high"] - p["low"]) / close).fillna(0.0)
-        feats["close_open_spread"] = ((close - p["open"]) / close).fillna(0.0)
-
         # 6. Volume Dynamics
+        feats["volume_change_1"] = volume.pct_change().replace([np.inf, -np.inf], np.nan).fillna(0.0)
         vol_sma_24 = volume.rolling(window=24, min_periods=1).mean().replace(0, np.nan)
         feats["volume_ratio_24"] = (volume / vol_sma_24).fillna(1.0)
-        feats["volume_change_1"] = (volume.pct_change()).replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
         return feats
 
@@ -230,7 +247,7 @@ class FeatureEngineer:
     ) -> pd.DataFrame:
         """
         Merge price features and sentiment features aligned by timestamp index.
-        If sentiment is sparse, gaps are sensibly filled with neutral baseline values.
+        Creates sentiment-price interaction feature.
         """
         if prices_df.empty:
             raise ValueError("prices_df cannot be empty")
@@ -249,19 +266,20 @@ class FeatureEngineer:
         merged = price_feats.join(sent_feats, how="left")
 
         # Fill sentiment gaps with neutral values for periods where no tweets occurred
-        sentiment_fill_zeros = [c for c in sent_feats.columns if "post_count" in c or "volume" in c]
-        sentiment_fill_neutral = [c for c in sent_feats.columns if c not in sentiment_fill_zeros]
-
-        for col in sentiment_fill_zeros:
+        for col in SENTIMENT_FEATURE_COLS:
             if col in merged.columns:
                 merged[col] = merged[col].fillna(0.0)
-        for col in sentiment_fill_neutral:
-            if col in merged.columns:
-                merged[col] = merged[col].fillna(0.0)
+            elif col != "sentiment_price_interaction":
+                merged[col] = 0.0
 
-        # Include raw close price and volume for reference and target generation
+        # Interaction feature: Sentiment confirming or diverging from recent return
+        merged["sentiment_price_interaction"] = (merged["mean_compound"] * merged["return_1"]).fillna(0.0)
+
+        # Reference price columns for target construction
         merged["close"] = prices_df["close"]
-        merged["volume"] = prices_df["volume"]
         merged["open"] = prices_df["open"]
+        merged["high"] = prices_df["high"]
+        merged["low"] = prices_df["low"]
+        merged["volume"] = prices_df["volume"]
 
         return merged.sort_index()
