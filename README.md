@@ -2,7 +2,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 29 Passed](https://img.shields.io/badge/Tests-29%20Passed-brightgreen.svg)]()
+[![Tests: 30 Passed](https://img.shields.io/badge/Tests-30%20Passed-brightgreen.svg)]()
 [![Free-First: 100%](https://img.shields.io/badge/Tools-100%25%20Free-success.svg)]()
 
 A quantitative machine learning pipeline developed for the **CrowdWisdomTrading Quantitative Data Scientist Internship Assessment**. 

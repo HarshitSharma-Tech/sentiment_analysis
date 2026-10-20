@@ -38,10 +38,11 @@ class ApifyXConnector:
         self,
         query: str = "Bitcoin OR BTC",
         max_posts: int = 200,
-        actor_id: str = "apidojo~tweet-scraper",
+        actor_id: str = "apidojo/tweet-scraper",
     ) -> List[Dict[str, Any]]:
         """
         Fetch posts from Apify REST API if credentials are provided.
+        Accepts actor_id in both 'owner/actor' and 'owner~actor' formats.
         Returns empty list with explanation if unconfigured.
         """
         if not self.is_configured():
@@ -51,8 +52,10 @@ class ApifyXConnector:
             )
             return []
 
-        logger.info(f"Triggering Apify Actor '{actor_id}' for query '{query}' (limit: {max_posts})...")
-        endpoint = f"https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items"
+        # Apify REST API requires owner~actor format in URL paths
+        normalized_actor = actor_id.replace("/", "~")
+        logger.info(f"Triggering Apify Actor '{normalized_actor}' for query '{query}' (limit: {max_posts})...")
+        endpoint = f"https://api.apify.com/v2/acts/{normalized_actor}/run-sync-get-dataset-items"
         headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",

@@ -90,3 +90,21 @@ def test_apify_api_error_handling(mock_post):
     mock_post.side_effect = Exception("Connection timeout to Apify")
     posts_exc = connector.fetch_posts(query="Bitcoin", max_posts=10)
     assert posts_exc == []
+
+
+@patch("src.ingestion.apify_x.requests.post")
+def test_apify_actor_id_normalization(mock_post):
+    """Verify that 'owner/actor' format is normalized to 'owner~actor' in the URL endpoint."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+    mock_post.return_value = mock_response
+
+    connector = ApifyXConnector(api_token="valid_test_token_123")
+    connector.fetch_posts(query="BTC", max_posts=5, actor_id="apidojo/tweet-scraper")
+
+    # Assert that requests.post was called with '~' in the URL
+    called_url = mock_post.call_args[0][0]
+    assert "apidojo~tweet-scraper" in called_url
+    assert "apidojo/tweet-scraper" not in called_url
+
