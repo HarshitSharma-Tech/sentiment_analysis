@@ -2,7 +2,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 25 Passed](https://img.shields.io/badge/Tests-25%20Passed-brightgreen.svg)]()
+[![Tests: 29 Passed](https://img.shields.io/badge/Tests-29%20Passed-brightgreen.svg)]()
 [![Free-First: 100%](https://img.shields.io/badge/Tools-100%25%20Free-success.svg)]()
 
 A quantitative machine learning pipeline developed for the **CrowdWisdomTrading Quantitative Data Scientist Internship Assessment**. 
@@ -128,7 +128,7 @@ Runs the entire research pipeline with one command:
 ```
 
 ### 3. Run the Unit Test Suite
-Runs all 25 unit tests covering targets, statistical tests, leakage boundaries, walk-forward CV, frozen holdout, database migrations, and backtesting:
+Runs all 29 unit tests covering Apify scraping, targets, statistical tests, leakage boundaries, walk-forward CV, frozen holdout, database migrations, and backtesting:
 
 ```powershell
 .\.venv\Scripts\pytest.exe -v tests/
@@ -261,6 +261,7 @@ crowdwisdom-sentiment-prediction/
 │   └── generate_sample_data.py  # Deterministic sample dataset generator
 │
 ├── tests/
+│   ├── test_apify.py            # Apify connector, parsing & fallback unit tests
 │   ├── test_database.py         # SQLite schema & deduplication tests
 │   ├── test_sentiment.py        # VADER crypto lexicon & cleaning tests
 │   ├── test_features.py         # Aggregation & technical indicator tests
