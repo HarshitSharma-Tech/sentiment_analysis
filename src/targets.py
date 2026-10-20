@@ -60,6 +60,7 @@ class HorizonTargetSpec:
     target_return_col: str
     cutoff_price_col: str
     forward_steps: int
+    realization_offset_hours: int
 
 
 class TargetEngineer:
@@ -78,6 +79,7 @@ class TargetEngineer:
                 target_return_col="target_return_h0",
                 cutoff_price_col="cutoff_price",
                 forward_steps=0,
+                realization_offset_hours=1,
             ),
             1: HorizonTargetSpec(
                 horizon=1,
@@ -86,6 +88,7 @@ class TargetEngineer:
                 target_return_col="target_return_h1",
                 cutoff_price_col="cutoff_price",
                 forward_steps=1,
+                realization_offset_hours=2,
             ),
             2: HorizonTargetSpec(
                 horizon=2,
@@ -94,6 +97,7 @@ class TargetEngineer:
                 target_return_col="target_return_h2",
                 cutoff_price_col="cutoff_price",
                 forward_steps=2,
+                realization_offset_hours=3,
             ),
             3: HorizonTargetSpec(
                 horizon=3,
@@ -102,6 +106,7 @@ class TargetEngineer:
                 target_return_col="target_return_h3",
                 cutoff_price_col="cutoff_price",
                 forward_steps=3,
+                realization_offset_hours=4,
             ),
             4: HorizonTargetSpec(
                 horizon=4,
@@ -110,6 +115,7 @@ class TargetEngineer:
                 target_return_col="target_return_h4",
                 cutoff_price_col="cutoff_price",
                 forward_steps=4,
+                realization_offset_hours=5,
             ),
             5: HorizonTargetSpec(
                 horizon=5,
@@ -118,14 +124,22 @@ class TargetEngineer:
                 target_return_col="target_return_h5",
                 cutoff_price_col="cutoff_price",
                 forward_steps=5,
+                realization_offset_hours=6,
             ),
         }
 
     def create_targets(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add multi-horizon price and return targets to the feature DataFrame.
-        Cutoff price is the latest known close P(t-1) at the start of period t.
-        Requires 'close' column in df.
+        
+        Cutoff price is strictly the latest completed close P_close(t-1) at the start of bar t.
+        This guarantees:
+        - No mixing of open-price execution assumptions with close-based target definitions.
+        - Exactly identical reference price P_close(t-1) used for constructing targets,
+          computing persistence baselines, and reconstructing implied price forecasts:
+          P_hat(t+h) = P_close(t-1) * (1 + R_hat(t->t+h)).
+        - Horizon n+0 predicts the close of the current bar (close(t)) using information
+          strictly available before that close (information up to close(t-1)).
         """
         if "close" not in df.columns:
             raise ValueError("Input DataFrame must contain 'close' price column.")
@@ -133,16 +147,11 @@ class TargetEngineer:
         out = df.copy()
         close = out["close"]
 
-        # Base Cutoff Price: the last known price before period t begins
-        # If open price is available, open(t) is approximately close(t-1)
-        if "open" in out.columns:
-            out["cutoff_price"] = out["open"]
-        else:
-            out["cutoff_price"] = close.shift(1)
-
+        # Base Cutoff Price: strictly the latest completed close P(t-1) at decision timestamp t
+        out["cutoff_price"] = close.shift(1)
         p_cut = out["cutoff_price"]
 
-        # Horizon n+0: Current period t close (1 step ahead of cutoff)
+        # Horizon n+0: Current period t close (1 step ahead of cutoff, realizes at t + 1h)
         out["target_price_h0"] = close
         out["target_return_h0"] = (close - p_cut) / p_cut
 

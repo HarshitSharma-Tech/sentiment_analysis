@@ -74,3 +74,25 @@ def test_zero_volatility_handling():
     assert res.sortino_ratio == 0.0
     assert res.cumulative_return_pct == 0.0
     assert res.exposure_pct == 0.0
+    assert hasattr(res, "autocorr_lag1")
+
+
+def test_split_type_filtering():
+    dates = pd.date_range("2024-01-01 00:00:00", periods=40, freq="1h", tz="UTC")
+    preds_df = pd.DataFrame({
+        "model_name": ["ridge"] * 40,
+        "horizon": [1] * 40,
+        "split_type": ["dev_walk_forward"] * 25 + ["frozen_holdout"] * 15,
+        "forecast_timestamp": dates.strftime("%Y-%m-%d %H:%M:%S"),
+        "actual_return": [0.002, -0.001] * 20,
+        "predicted_return": [0.003, -0.001] * 20,
+    })
+
+    backtester = StrategyBacktester(initial_capital=100_000.0, frequency="1h")
+    res_holdout = backtester.run_backtest(preds_df, model_name="ridge", horizon=1, split_type="frozen_holdout")
+    assert res_holdout.total_bars == 15
+    assert res_holdout.split_type == "frozen_holdout"
+
+    res_dev = backtester.run_backtest(preds_df, model_name="ridge", horizon=1, split_type="dev_walk_forward")
+    assert res_dev.total_bars == 25
+

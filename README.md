@@ -2,12 +2,12 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 17 Passed](https://img.shields.io/badge/Tests-17%20Passed-brightgreen.svg)]()
+[![Tests: 25 Passed](https://img.shields.io/badge/Tests-25%20Passed-brightgreen.svg)]()
 [![Free-First: 100%](https://img.shields.io/badge/Tools-100%25%20Free-success.svg)]()
 
 A quantitative machine learning pipeline developed for the **CrowdWisdomTrading Quantitative Data Scientist Internship Assessment**. 
 
-This repository delivers an end-to-end, reproducible forecasting engine predicting Bitcoin (**BTC-USD**) price and returns across **six distinct forecast horizons** ($n+0$ through $n+5$) using historical market prices, local VADER social sentiment analysis, and free financial news RSS intelligence.
+This repository delivers a research-grade, leakage-resistant forecasting engine predicting Bitcoin (**BTC-USD**) price and returns across **six distinct forecast horizons** ($n+0$ through $n+5$) using historical market prices, local VADER social sentiment analysis, and free financial news RSS intelligence.
 
 ---
 
@@ -16,8 +16,8 @@ This repository delivers an end-to-end, reproducible forecasting engine predicti
 In strict adherence to the assessment's primary requirement: **EVERYTHING USES FREE TOOLS AND FREE DATA SOURCES**.
 
 - **No paid API keys, credit cards, or trial accounts required.**
-- **No paid cloud databases, cloud infrastructure, or GPUs required.** Runs on a standard laptop CPU.
-- **Local SQLite storage** with thread-safe parameterized queries and duplicate prevention.
+- **No paid cloud databases, cloud infrastructure, or GPUs required.** Runs locally on standard CPU hardware.
+- **Local SQLite storage** with thread-safe parameterized queries, idempotent schema migrations, and duplicate prevention.
 - **Local VADER NLP** with crypto-domain lexicon expansion.
 - **Resilient Multi-Source Fallbacks**: If primary endpoints experience throttling, the system falls back seamlessly to free public REST APIs or offline reproducible datasets.
 
@@ -28,13 +28,13 @@ In strict adherence to the assessment's primary requirement: **EVERYTHING USES F
 ```mermaid
 flowchart TD
     subgraph Ingestion ["1. Modular Ingestion (100% Free)"]
-        YF["yfinance (Primary Price)"] --> P_VAL["Price Validation (UTC, OHLCV Integrity)"]
+        YF["yfinance (Primary Real Spot)"] --> P_VAL["Price Validation (UTC, OHLCV Integrity)"]
         BIN["Binance Public Spot REST (Fallback)"] --> P_VAL
         P_VAL --> DB_P[(SQLite: historical_prices)]
 
         APIFY["Apify Connector (Optional)"] -.-> X_VAL["Social Ingestion & Cleaning"]
         CSV_X["Local CSV / JSON Importer"] --> X_VAL
-        SAMPLE_X["Reproducible Sample Dataset (180d)"] --> X_VAL
+        SAMPLE_X["Reproducible Synthetic Dataset (2,881 posts)"] --> X_VAL
         X_VAL --> VADER["Local VADER NLP Analyzer"]
         VADER --> DB_X[(SQLite: x_posts)]
 
@@ -45,28 +45,33 @@ flowchart TD
         DB_P --> FE["FeatureEngineer (13 Price + 11 Sentiment)"]
         DB_X --> AGG["Sentiment Aggregator (1h / 1d)"]
         AGG --> FE
-        FE --> MERGE["Synchronized Feature Matrix (Zero Lookahead)"]
-        MERGE --> TE["TargetEngineer (Distinct Horizons n+0 to n+5)"]
+        FE --> MERGE["Synchronized Feature Matrix (Shift=1, Zero Lookahead)"]
+        MERGE --> TE["TargetEngineer (P_cutoff = close(t-1) for all n+0 to n+5)"]
     end
 
-    subgraph Modeling ["3. Purged Walk-Forward Cross Validation"]
-        TE --> WF["Purged Walk-Forward Engine (Zero Horizon Overlap)"]
-        WF --> M1["Persistence Baseline (Zero Return)"]
+    subgraph Partitioning ["3. Chronological Separation"]
+        TE --> DEV["70% Development Window (Model Selection, Walk-Forward CV)"]
+        TE --> HOLD["30% Frozen Chronological Holdout (Quarantined)"]
+    end
+
+    subgraph Modeling ["4. Purged & Embargoed Cross Validation"]
+        DEV --> WF["Purged Walk-Forward Engine (h-step Purge + 5-Bar Embargo)"]
+        WF --> M1["Persistence Baseline (Zero-Return Random Walk)"]
         WF --> M2["RidgeCV Regression (L2 Regularization)"]
         WF --> M3["Random Forest Regressor (Depth Constrained)"]
         WF --> M4["HistGradientBoostingRegressor (L2 Penalized)"]
-        M1 & M2 & M3 & M4 --> OOS_PRED[(SQLite: model_predictions)]
+        HOLD --> OOS_EVAL["Frozen Holdout Evaluation (Trained on Dev)"]
     end
 
-    subgraph Evaluation ["4. Quantitative Evaluation & Strategy"]
-        OOS_PRED --> METRICS["OOS Metrics: MAE, RMSE, MAPE, Directional Accuracy"]
-        OOS_PRED --> ABLATION["Feature Ablation: Price-Only vs. Price + Sentiment"]
-        OOS_PRED --> BT["Strategy Backtester (10 bps Fees/Slippage)"]
-        BT --> RISK["Sharpe, Sortino, Max Drawdown, Win Rate, Turnover"]
-        METRICS & ABLATION & RISK --> DB_EVAL[(SQLite: evaluation_results)]
+    subgraph Evaluation ["5. Quantitative Evaluation & Strategy"]
+        WF & OOS_EVAL --> STATS["Diebold-Mariano Tests (HLN 1997) + Benjamini-Hochberg FDR"]
+        WF & OOS_EVAL --> ABLATION["Feature Ablation: Price-Only vs. Price + Sentiment"]
+        WF & OOS_EVAL --> BT["Strategy Backtester (10 bps Fees/Slippage, Spot Returns)"]
+        BT --> RISK["Sharpe, Sortino, Max Drawdown, Turnover, Return Autocorr"]
+        STATS & ABLATION & RISK --> DB_EVAL[(SQLite: evaluation_results)]
         DB_EVAL --> VIZ["Visualizer (8 Publication-Grade PNG Charts)"]
         DB_EVAL --> REP["ReportGenerator (MD & PDF)"]
-        DB_EVAL --> DASH["Streamlit Interactive Dashboard"]
+        DB_EVAL --> DASH["Streamlit Interactive Dashboard (Run & Split Filters)"]
     end
 ```
 
@@ -74,18 +79,18 @@ flowchart TD
 
 ## 🎯 Six Forecast Horizons Explained
 
-The system forecasts returns $\hat{R}_{t \to t+h}$ and derives the out-of-sample implied price $\hat{P}_{t+h} = P_{cutoff} \times (1 + \hat{R}_{t \to t+h})$, where $P_{cutoff} = P_{close}(t-1)$ represents the last fully confirmed closing price available at forecast time $t$:
+The system forecasts returns $\hat{R}_{t}^{(h)} = (close(t+h) - close(t-1)) / close(t-1)$ and derives the out-of-sample implied price $\hat{P}_{t+h} = P_{cutoff} \times (1 + \hat{R}_{t}^{(h)})$, where $P_{cutoff} = P_{close}(t-1)$ represents the last fully confirmed closing price available at forecast time $t$:
 
-| Horizon | Technical Name | Cutoff Price | Unknown Target Value | Target Window Span | Baseline MAE |
+| Horizon | Technical Name | Cutoff Price | Unknown Target Value | Target Window Span | Target Realization |
 | :---: | :--- | :--- | :--- | :---: | :---: |
-| **$n+0$** | Current Period Close | $P_{close}(t-1)$ | Closing price of period $t$ ($P_t$) | 1 period ahead | **$187.02** |
-| **$n+1$** | 1-Period Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+1$ ($P_{t+1}$) | 2 periods ahead | **$265.54** |
-| **$n+2$** | 2-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+2$ ($P_{t+2}$) | 3 periods ahead | **$326.88** |
-| **$n+3$** | 3-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+3$ ($P_{t+3}$) | 4 periods ahead | **$375.90** |
-| **$n+4$** | 4-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+4$ ($P_{t+4}$) | 5 periods ahead | **$421.87** |
-| **$n+5$** | 5-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+5$ ($P_{t+5}$) | 6 periods ahead | **$463.39** |
+| **$n+0$** | Current Period Close | $P_{close}(t-1)$ | Closing price of period $t$ ($P_t$) | 1 hour ahead | $t + 1\text{h}$ |
+| **$n+1$** | 1-Period Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+1$ ($P_{t+1}$) | 2 hours ahead | $t + 2\text{h}$ |
+| **$n+2$** | 2-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+2$ ($P_{t+2}$) | 3 hours ahead | $t + 3\text{h}$ |
+| **$n+3$** | 3-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+3$ ($P_{t+3}$) | 4 hours ahead | $t + 4\text{h}$ |
+| **$n+4$** | 4-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+4$ ($P_{t+4}$) | 5 hours ahead | $t + 5\text{h}$ |
+| **$n+5$** | 5-Periods Ahead Close | $P_{close}(t-1)$ | Closing price of period $t+5$ ($P_{t+5}$) | 6 hours ahead | $t + 6\text{h}$ |
 
-> **Addressing the Horizon Differentiation:** Under the corrected mathematical formulation, all horizons share a unified forecast cutoff $P_{cutoff} = P_{close}(t-1)$ with input vector $X_t$, forecasting increasingly distant forward bars $P_{close}(t+h)$. As shown above, baseline error increases monotonically with $\sqrt{h+1}$ in exact agreement with random-walk pricing theory, completely eliminating previous identical metric artifacts.
+> **Addressing Horizon Differentiation:** Under the corrected formulation, all horizons share a unified forecast cutoff $P_{cutoff} = P_{close}(t-1)$ with feature vector $X_t$, forecasting increasingly distant forward bars $P_{close}(t+h)$. Baseline error increases monotonically with $\sqrt{h+1}$ in exact agreement with random-walk pricing theory, completely eliminating previous identical metric artifacts.
 
 ---
 
@@ -106,13 +111,15 @@ python -m venv .venv
 ```
 
 ### 2. Run the Full Zero-Config Demo (End-to-End)
-Runs the entire pipeline with one command:
+Runs the entire research pipeline with one command:
 - Ingests real BTC-USD hourly prices from yfinance (with Binance REST fallback)
 - Ingests X posts & scores VADER sentiment with crypto-specific lexicon
 - Fetches real news headlines from CoinDesk, Cointelegraph, and Google News RSS feeds
-- Runs purged walk-forward cross-validation for 4 models across 6 horizons
+- Executes 70% Development purged walk-forward cross-validation (5-bar embargo)
+- Evaluates 30% Frozen Chronological Holdout (quarantined until frozen)
+- Applies Diebold-Mariano tests (HLN 1997) with Benjamini-Hochberg False Discovery Rate corrections
 - Executes feature ablation experiment (Price-Only vs. Price + Sentiment)
-- Simulates trading strategy with 10 bps transaction fees and slippage
+- Simulates trading strategy with non-overlapping spot returns and 10 bps transaction fees
 - Generates 8 publication-grade charts in `reports/figures/`
 - Compiles `reports/sentiment_outlook.md`, `reports/evaluation_report.md`, and `reports/evaluation_report.pdf`
 
@@ -121,83 +128,69 @@ Runs the entire pipeline with one command:
 ```
 
 ### 3. Run the Unit Test Suite
-Runs all 17 unit tests covering target generation, zero-leakage, purged walk-forward splits, feature registries, sentiment scoring, and backtest edge cases:
+Runs all 25 unit tests covering targets, statistical tests, leakage boundaries, walk-forward CV, frozen holdout, database migrations, and backtesting:
 
 ```powershell
 .\.venv\Scripts\pytest.exe -v tests/
 ```
 
 ### 4. Launch the Interactive Streamlit Dashboard
-Launch the local web dashboard for interactive exploration:
+Launch the local web dashboard with active Run ID selection and Development vs. Frozen Holdout partition toggles:
 
 ```powershell
 .\.venv\Scripts\streamlit.exe run dashboard/app.py
-```
-
-### 5. Configurable CLI Pipeline Runner
-For custom tickers, frequencies, or external CSV/JSON files:
-
-```powershell
-# Custom run with local CSV import
-.\.venv\Scripts\python.exe scripts/run_pipeline.py --asset BTC-USD --frequency 1h --days 180 --x-file data/sample/btc_sample_x_posts.csv
-
-# Daily frequency run
-.\.venv\Scripts\python.exe scripts/run_pipeline.py --asset BTC-USD --frequency 1d --days 180
 ```
 
 ---
 
 ## 📊 Summary of Out-of-Sample Results
 
-*Evaluated across 3,821 contiguous out-of-sample hourly test bars (180 days) using purged walk-forward cross-validation:*
+*Evaluated on 1,290 contiguous hourly bars (30% Frozen Chronological Holdout) with zero retuning:*
 
-### Multi-Horizon Model Forecast Accuracy Matrix
+### Frozen Chronological Holdout Forecast Accuracy Matrix
 
-| Horizon | Model | Out-of-Sample Bars | MAE ($) | RMSE ($) | Directional Accuracy (%) | Baseline MAE ($) | MAE Impv (%) |
-| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **$n+0$** | **Persistence Baseline** | 3,821 | **$187.02** | **$291.53** | 49.7% | $187.02 | +0.00% |
-| **$n+0$** | Ridge Regression | 3,821 | $187.41 | $292.34 | **51.5%** | $187.02 | -0.21% |
-| **$n+0$** | Random Forest | 3,821 | $187.44 | $292.30 | **51.1%** | $187.02 | -0.22% |
-| **$n+0$** | HistGradientBoosting | 3,821 | $187.79 | $293.00 | **51.5%** | $187.02 | -0.41% |
-| **$n+1$** | **Persistence Baseline** | 3,820 | **$265.54** | **$408.56** | 50.2% | $265.54 | +0.00% |
-| **$n+1$** | Random Forest | 3,820 | $266.81 | $410.85 | **51.1%** | $265.54 | -0.48% |
-| **$n+1$** | Ridge Regression | 3,820 | $267.07 | $410.12 | **51.8%** | $265.54 | -0.57% |
-| **$n+1$** | HistGradientBoosting | 3,820 | $267.10 | $411.12 | **50.8%** | $265.54 | -0.59% |
-| **$n+2$** | **Persistence Baseline** | 3,819 | **$326.88** | **$494.69** | 50.0% | $326.88 | +0.00% |
-| **$n+2$** | Random Forest | 3,819 | $327.19 | $497.78 | **52.9%** | $326.88 | -0.10% |
-| **$n+2$** | HistGradientBoosting | 3,819 | $328.38 | $498.39 | **51.8%** | $326.88 | -0.46% |
-| **$n+2$** | Ridge Regression | 3,819 | $329.17 | $497.58 | **51.3%** | $326.88 | -0.70% |
-| **$n+3$** | **Persistence Baseline** | 3,818 | **$375.90** | **$564.16** | 50.7% | $375.90 | +0.00% |
-| **$n+3$** | Random Forest | 3,818 | $377.95 | $568.85 | **51.7%** | $375.90 | -0.55% |
-| **$n+3$** | HistGradientBoosting | 3,818 | $380.75 | $571.80 | **50.7%** | $375.90 | -1.29% |
-| **$n+3$** | Ridge Regression | 3,818 | $380.76 | $569.93 | **51.2%** | $375.90 | -1.29% |
-| **$n+4$** | **Persistence Baseline** | 3,817 | **$421.87** | **$623.68** | 50.6% | $421.87 | +0.00% |
-| **$n+4$** | Random Forest | 3,817 | $426.85 | $631.81 | **50.2%** | $421.87 | -1.18% |
-| **$n+4$** | HistGradientBoosting | 3,817 | $428.94 | $632.47 | **50.2%** | $421.87 | -1.67% |
-| **$n+4$** | Ridge Regression | 3,817 | $430.08 | $632.12 | 49.9% | $421.87 | -1.95% |
-| **$n+5$** | **Persistence Baseline** | 3,816 | **$463.39** | **$680.72** | 51.6% | $463.39 | +0.00% |
-| **$n+5$** | Random Forest | 3,816 | $471.64 | $690.66 | 49.9% | $463.39 | -1.78% |
-| **$n+5$** | HistGradientBoosting | 3,816 | $474.00 | $692.10 | 49.0% | $463.39 | -2.29% |
-| **$n+5$** | Ridge Regression | 3,816 | $474.42 | $691.37 | 48.7% | $463.39 | -2.38% |
-
-### Feature Ablation Findings: Price-Only vs. Price + Sentiment
-
-Comparing models trained purely on technical price features against models augmented with social sentiment:
-- At horizon $n+1$, Random Forest achieves **MAE $266.81** with sentiment vs. **$267.03** price-only, and Directional Accuracy **51.1%** vs. **50.8%**.
-- At horizon $n+3$, Random Forest achieves **MAE $377.95** with sentiment vs. **$379.25** price-only.
-- Sentiment features add subtle marginal signal for non-linear tree ensembles, but the overall market remains strongly governed by price action momentum.
+| Horizon | Model | Holdout Bars | MAE ($) | RMSE ($) | Dir Acc (%) | Maj Class Base (%) | Base MAE ($) | DM Stat | DM p-val (FDR) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **$n+0$** | **Persistence Baseline** | 1,290 | **$191.17** | **$291.61** | 50.9% | 50.9% | $191.17 | +0.00 | 1.000 |
+| **$n+0$** | Random Forest | 1,290 | $191.38 | $291.64 | 50.3% | 50.9% | $191.17 | -0.04 | 0.998 |
+| **$n+0$** | HistGradientBoosting | 1,290 | $191.80 | $292.62 | 49.5% | 50.9% | $191.17 | -1.46 | 0.998 |
+| **$n+0$** | Ridge Regression | 1,290 | $192.68 | $293.17 | 50.9% | 50.9% | $191.17 | -1.68 | 0.998 |
+| **$n+1$** | **Persistence Baseline** | 1,289 | **$270.26** | **$413.47** | **52.4%** | 52.4% | $270.26 | +0.00 | 1.000 |
+| **$n+1$** | Random Forest | 1,289 | $271.41 | $414.36 | 50.4% | 52.4% | $270.26 | -0.66 | 0.998 |
+| **$n+1$** | HistGradientBoosting | 1,289 | $272.92 | $415.85 | 49.1% | 52.4% | $270.26 | -2.00 | 0.998 |
+| **$n+1$** | Ridge Regression | 1,289 | $274.22 | $416.85 | 50.0% | 52.4% | $270.26 | -1.92 | 0.998 |
+| **$n+2$** | **Random Forest** | 1,288 | **$334.02** | $502.54 | 52.9% | 51.1% | $335.03 | -0.58 | 0.998 |
+| **$n+2$** | Persistence Baseline | 1,288 | $335.03 | **$501.51** | 51.1% | 51.1% | $335.03 | +0.00 | 1.000 |
+| **$n+2$** | HistGradientBoosting | 1,288 | $336.81 | $504.81 | **53.1%** | 51.1% | $335.03 | -1.91 | 0.998 |
+| **$n+2$** | Ridge Regression | 1,288 | $339.64 | $507.66 | 51.2% | 51.1% | $335.03 | -2.23 | 0.998 |
+| **$n+3$** | **Random Forest** | 1,287 | **$386.11** | **$578.18** | **55.3%** | 52.1% | $387.90 | -0.39 | 0.998 |
+| **$n+3$** | Persistence Baseline | 1,287 | $387.90 | $577.04 | 52.1% | 52.1% | $387.90 | +0.00 | 1.000 |
+| **$n+3$** | HistGradientBoosting | 1,287 | $388.33 | $580.60 | 55.1% | 52.1% | $387.90 | -1.61 | 0.998 |
+| **$n+3$** | Ridge Regression | 1,287 | $392.01 | $583.87 | 51.7% | 52.1% | $387.90 | -1.99 | 0.998 |
+| **$n+4$** | **Random Forest** | 1,286 | **$436.63** | $643.53 | **53.3%** | 52.3% | $436.95 | -0.80 | 0.998 |
+| **$n+4$** | Persistence Baseline | 1,286 | $436.95 | **$639.58** | 52.3% | 52.3% | $436.95 | +0.00 | 1.000 |
+| **$n+4$** | HistGradientBoosting | 1,286 | $438.99 | $645.36 | 51.3% | 52.3% | $436.95 | -1.51 | 0.998 |
+| **$n+4$** | Ridge Regression | 1,286 | $445.10 | $652.14 | 50.5% | 52.3% | $436.95 | -2.61 | 0.998 |
+| **$n+5$** | **Persistence Baseline** | 1,285 | **$478.32** | **$699.01** | 51.8% | 51.8% | $478.32 | +0.00 | 1.000 |
+| **$n+5$** | Random Forest | 1,285 | $479.86 | $703.77 | **54.3%** | 51.8% | $478.32 | -0.80 | 0.998 |
+| **$n+5$** | HistGradientBoosting | 1,285 | $481.40 | $705.18 | 50.3% | 51.8% | $478.32 | -1.30 | 0.998 |
+| **$n+5$** | Ridge Regression | 1,285 | $489.53 | $714.82 | 49.6% | 51.8% | $478.32 | -2.82 | 0.998 |
 
 ### Quantitative Trading Strategy Performance ($n+1$)
-*Trading simulated with 10 bps slippage and taker fee assumptions:*
+*Trading simulated with non-overlapping single-period spot returns and 10 bps transaction fees:*
 
-| Strategy Model | Horizon | Cumulative Return (%) | Exposure (%) | Turnover (%) | Annualized Sharpe | Sortino Ratio | Max DD (%) | Win Rate (%) | Trades | Buy & Hold Benchmark (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **No-Trade Baseline** | n+1 | **0.00%** | 0.0% | 0.0% | **0.00** | 0.00 | 0.00% | 0.0% | 0 | -1.53% |
-| **Random Forest** | n+1 | **+0.18%** | 4.3% | 2.9% | **-0.21** | -0.35 | **-12.43%** | **52.1%** | 112 | -1.53% |
-| **Ridge Regression** | n+1 | **-8.78%** | 4.2% | 4.0% | -1.88 | -2.73 | -12.61% | 50.0% | 154 | -1.53% |
-| **HistGradientBoosting** | n+1 | **-9.77%** | 3.3% | 2.6% | -2.60 | -3.62 | -13.90% | 46.5% | 98 | -1.53% |
+| Strategy Model | Horizon | Split | Cumulative Return (%) | Exposure (%) | Turnover (%) | Sharpe | Sortino | Autocorr (Lag 1) | Max DD (%) | Win Rate (%) | Trades | Benchmark (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **No-Trade Baseline** | n+1 | Dev Walk Forward | **0.00%** | 0.0% | 0.0% | **0.00** | 0.00 | +0.00 | 0.00% | 0.0% | 0 | -2.15% |
+| **Ridge Regression** | n+1 | Dev Walk Forward | -7.02% | 4.3% | 4.3% | -3.20 | -4.67 | +0.01 | -7.87% | 46.8% | 110 | -2.15% |
+| **Random Forest** | n+1 | Dev Walk Forward | -5.96% | 4.0% | 3.2% | -2.96 | -4.29 | +0.15 | -9.96% | 48.0% | 80 | -2.15% |
+| **HistGradientBoosting** | n+1 | Dev Walk Forward | -5.12% | 3.3% | 2.8% | -2.38 | -3.73 | +0.16 | -9.34% | 48.8% | 72 | -2.15% |
+| **No-Trade Baseline** | n+1 | Frozen Holdout | **0.00%** | 0.0% | 0.0% | **0.00** | 0.00 | +0.00 | 0.00% | 0.0% | 0 | +3.27% |
+| **HistGradientBoosting** | n+1 | Frozen Holdout | -1.86% | 6.1% | 2.3% | -1.97 | -2.78 | -0.11 | -2.62% | 50.6% | 30 | +3.27% |
+| **Random Forest** | n+1 | Frozen Holdout | -2.18% | 5.7% | 2.9% | -2.16 | -3.15 | -0.16 | -3.33% | 45.2% | 38 | +3.27% |
+| **Ridge Regression** | n+1 | Frozen Holdout | -8.30% | 6.3% | 5.0% | -6.01 | -7.24 | -0.03 | -8.42% | 42.0% | 64 | +3.27% |
 
-> **Quantitative Insight & Scientific Honesty:** Consistent with institutional quantitative finance literature, hourly crypto returns possess a low signal-to-noise ratio. Directional accuracy hovered between **50.0% and 52.9%**. Under realistic transaction costs (10 bps/trade), aggressive high-turnover trading suffers drag from fees, whereas selective threshold filtering (Random Forest with 112 trades) outperformed the Buy & Hold benchmark (+0.18% vs. -1.53%) with a 52.1% win rate.
+> **Quantitative Insight & Scientific Honesty:** In hourly crypto time-series, the persistence random-walk baseline is extremely difficult to beat in quadratic loss. While Random Forest achieves directional accuracy up to 55.3% on horizon $n+3$, Diebold-Mariano hypothesis tests confirm that error differences are not statistically distinguishable from zero after correcting for multi-step autocorrelation and FDR. After accounting for realistic 10 bps friction, hourly turnover incurs fee drag, making the No-Trade baseline superior to frequent momentum switching.
 
 ---
 
@@ -228,9 +221,10 @@ crowdwisdom-sentiment-prediction/
 │   ├── sentiment.py             # Local VADER NLP analyzer with crypto lexicon
 │   ├── features.py              # Point-in-time sentiment & technical feature matrix
 │   ├── targets.py               # Multi-horizon target generator (n+0 to n+5)
+│   ├── stats.py                 # Diebold-Mariano tests & Benjamini-Hochberg FDR
 │   ├── train.py                 # MultiHorizonPipeline with joblib persistence
-│   ├── validate.py              # Chronological walk-forward validation engine
-│   ├── backtest.py              # Quantitative strategy simulation & risk metrics
+│   ├── validate.py              # Chronological walk-forward validation engine (70% Dev / 30% Holdout)
+│   ├── backtest.py              # Quantitative strategy simulation (non-overlapping spot returns)
 │   ├── visualize.py             # Matplotlib & Plotly publication chart generator
 │   ├── report.py                # Markdown & PDF report generator (ReportLab)
 │   └── ingestion/
@@ -271,9 +265,11 @@ crowdwisdom-sentiment-prediction/
 │   ├── test_sentiment.py        # VADER crypto lexicon & cleaning tests
 │   ├── test_features.py         # Aggregation & technical indicator tests
 │   ├── test_targets.py          # Multi-horizon target logic tests
-│   ├── test_validation.py       # Walk-forward & directional accuracy tests
-│   └── test_backtest.py         # Trading simulation & edge-case tests
+│   ├── test_stats.py            # Diebold-Mariano & FDR hypothesis test verification
+│   ├── test_validation.py       # Walk-forward, holdout & directional accuracy tests
+│   └── test_backtest.py         # Trading simulation & non-overlapping return tests
 │
+├── REPORT_VALIDATION_AUDIT.md   # Exhaustive 7-point audit & discrepancy verification
 ├── .env.example                 # Optional environment variables
 ├── .gitignore                   # Excludes secrets, venv, and large databases
 ├── pytest.ini                   # Pytest pythonpath configuration

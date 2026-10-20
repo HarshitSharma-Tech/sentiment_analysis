@@ -133,29 +133,31 @@ def run_demo() -> None:
     )
 
     models_to_test = ["persistence", "ridge", "random_forest", "hist_gradient_boosting"]
-    metrics_df, preds_df = validator.run_full_validation(
+    dev_metrics_df, holdout_metrics_df, preds_df = validator.run_full_validation(
         df_with_targets=df_with_targets,
         feature_cols=available_all_feats,
         models=models_to_test,
         horizons=cfg.horizons,
         run_id=run_id,
+        holdout_ratio=0.30,
     )
 
     # 8. Feature Ablation: Price-Only vs. Price + Sentiment
     logger.info("8/9 Running feature ablation study (Price-Only vs. Price+Sentiment)...")
-    price_metrics_df, _ = validator.run_full_validation(
+    price_dev_metrics_df, price_holdout_metrics_df, _ = validator.run_full_validation(
         df_with_targets=df_with_targets,
         feature_cols=available_price_feats,
         models=["ridge", "random_forest"],
         horizons=cfg.horizons,
         run_id=f"{run_id}_price_only",
+        holdout_ratio=0.30,
     )
 
     ablation_rows = []
     for h in cfg.horizons:
         for m in ["ridge", "random_forest"]:
-            p_row = price_metrics_df[(price_metrics_df["model_name"] == m) & (price_metrics_df["horizon"] == h)]
-            s_row = metrics_df[(metrics_df["model_name"] == m) & (metrics_df["horizon"] == h)]
+            p_row = price_holdout_metrics_df[(price_holdout_metrics_df["model_name"] == m) & (price_holdout_metrics_df["horizon"] == h)]
+            s_row = holdout_metrics_df[(holdout_metrics_df["model_name"] == m) & (holdout_metrics_df["horizon"] == h)]
             if not p_row.empty:
                 ablation_rows.append({
                     "horizon": h,
@@ -188,55 +190,70 @@ def run_demo() -> None:
         frequency=cfg.data_frequency,
     )
 
-    backtest_results_dict = {}
-    backtest_summary_df = backtester.evaluate_all_models(preds_df, horizon=1)
+    dev_bt_summary = backtester.evaluate_all_models(
+        preds_df, horizon=1, split_type="dev_walk_forward", prices_df=prices_df
+    )
+    holdout_bt_summary = backtester.evaluate_all_models(
+        preds_df, horizon=1, split_type="frozen_holdout", prices_df=prices_df
+    )
+    backtest_summary_df = pd.concat([dev_bt_summary, holdout_bt_summary], ignore_index=True)
 
+    backtest_results_dict = {}
     for m in models_to_test:
         if m == "persistence":
             continue
         try:
-            res = backtester.run_backtest(preds_df, model_name=m, horizon=1)
+            res = backtester.run_backtest(
+                preds_df, model_name=m, horizon=1, split_type="frozen_holdout", prices_df=prices_df
+            )
             backtest_results_dict[m] = res
         except Exception as e:
             logger.warning(f"Backtest error for {m}: {e}")
 
-    # Save evaluation results to SQLite
+    # Save evaluation results to SQLite for both dev and holdout
     eval_records = []
-    for _, m_row in metrics_df.iterrows():
-        m_name = m_row["model_name"]
-        h = int(m_row["horizon"])
-        bt_match = backtest_summary_df[
-            (backtest_summary_df["model_name"] == m_name) & (backtest_summary_df["horizon"] == h)
-        ]
-        sh = float(bt_match["sharpe_ratio"].values[0]) if not bt_match.empty else 0.0
-        so = float(bt_match["sortino_ratio"].values[0]) if not bt_match.empty else 0.0
-        mdd = float(bt_match["max_drawdown_pct"].values[0]) if not bt_match.empty else 0.0
-        cum = float(bt_match["cumulative_return_pct"].values[0]) if not bt_match.empty else 0.0
-        win = float(bt_match["win_rate_pct"].values[0]) if not bt_match.empty else 0.0
-        trades = int(bt_match["total_trades"].values[0]) if not bt_match.empty else 0
+    for split_tag, m_df in [("dev_walk_forward", dev_metrics_df), ("frozen_holdout", holdout_metrics_df)]:
+        for _, m_row in m_df.iterrows():
+            m_name = m_row["model_name"]
+            h = int(m_row["horizon"])
+            bt_match = backtest_summary_df[
+                (backtest_summary_df["model_name"] == m_name)
+                & (backtest_summary_df["horizon"] == h)
+                & (backtest_summary_df["split_type"] == split_tag)
+            ]
+            sh = float(bt_match["sharpe_ratio"].values[0]) if not bt_match.empty else 0.0
+            so = float(bt_match["sortino_ratio"].values[0]) if not bt_match.empty else 0.0
+            mdd = float(bt_match["max_drawdown_pct"].values[0]) if not bt_match.empty else 0.0
+            cum = float(bt_match["cumulative_return_pct"].values[0]) if not bt_match.empty else 0.0
+            win = float(bt_match["win_rate_pct"].values[0]) if not bt_match.empty else 0.0
+            trades = int(bt_match["total_trades"].values[0]) if not bt_match.empty else 0
 
-        eval_records.append({
-            "run_id": run_id,
-            "model_name": m_name,
-            "horizon": h,
-            "frequency": cfg.data_frequency,
-            "train_bars": cfg.wf_min_train_size,
-            "test_bars": int(m_row["test_bars"]),
-            "mae": float(m_row["mae"]),
-            "rmse": float(m_row["rmse"]),
-            "mape": float(m_row["mape"]),
-            "directional_accuracy": float(m_row["directional_accuracy"]),
-            "r2_score": float(m_row["r2_score"]),
-            "baseline_mae": float(m_row["baseline_mae"]),
-            "baseline_rmse": float(m_row["baseline_rmse"]),
-            "sharpe_ratio": sh,
-            "sortino_ratio": so,
-            "max_drawdown": mdd,
-            "cumulative_return": cum,
-            "win_rate": win,
-            "total_trades": trades,
-            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        })
+            eval_records.append({
+                "run_id": run_id,
+                "model_name": m_name,
+                "horizon": h,
+                "frequency": cfg.data_frequency,
+                "split_type": split_tag,
+                "train_bars": cfg.wf_min_train_size,
+                "test_bars": int(m_row["test_bars"]),
+                "mae": float(m_row["mae"]),
+                "rmse": float(m_row["rmse"]),
+                "mape": float(m_row["mape"]),
+                "directional_accuracy": float(m_row["directional_accuracy"]),
+                "majority_class_baseline": float(m_row.get("majority_class_baseline", 50.0)),
+                "r2_score": float(m_row["r2_score"]),
+                "baseline_mae": float(m_row["baseline_mae"]),
+                "baseline_rmse": float(m_row["baseline_rmse"]),
+                "dm_statistic": float(m_row.get("dm_statistic", 0.0)),
+                "dm_p_value": float(m_row.get("dm_fdr_q_value", m_row.get("dm_p_value_one_sided", 1.0))),
+                "sharpe_ratio": sh,
+                "sortino_ratio": so,
+                "max_drawdown": mdd,
+                "cumulative_return": cum,
+                "win_rate": win,
+                "total_trades": trades,
+                "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            })
     db.save_evaluation_results(eval_records)
 
     # 10. Visualizations
@@ -245,11 +262,11 @@ def run_demo() -> None:
     vis.plot_price_and_sentiment(prices_df, agg_sentiment)
     vis.plot_pos_vs_neg(agg_sentiment)
     vis.plot_post_volume(agg_sentiment)
-    vis.plot_actual_vs_predicted_horizons(preds_df, model_name="ridge")
-    vis.plot_model_comparison(metrics_df)
+    vis.plot_actual_vs_predicted_horizons(preds_df[preds_df["split_type"] == "frozen_holdout"], model_name="ridge")
+    vis.plot_model_comparison(holdout_metrics_df)
     vis.plot_correlation_heatmap(df_with_targets)
     vis.plot_equity_curves(backtest_results_dict)
-    vis.plot_ablation_comparison(price_metrics_df, metrics_df, model_name="ridge")
+    vis.plot_ablation_comparison(price_holdout_metrics_df, holdout_metrics_df, model_name="ridge")
 
     # 11. Reports
     logger.info("Compiling reports...")
@@ -260,11 +277,12 @@ def run_demo() -> None:
         agg_sentiment=agg_sentiment,
         recent_posts_df=posts_df,
         recent_news_df=recent_news_df,
-        data_source_label="Reproducible Sample Social Data + Real Market Prices",
+        data_source_label="Reproducible Sample Social Data (Synthetic) + Real Market Prices",
         is_live_x=False,
     )
     report_path = rg.generate_evaluation_report(
-        metrics_df=metrics_df,
+        dev_metrics_df=dev_metrics_df,
+        holdout_metrics_df=holdout_metrics_df,
         backtest_results_df=backtest_summary_df,
         ablation_df=ablation_df,
         asset_ticker=cfg.asset_ticker,
@@ -283,9 +301,10 @@ def run_demo() -> None:
     print("=" * 80)
 
     # Print summary table
-    print("\n--- OUT-OF-SAMPLE MODEL PERFORMANCE SUMMARY ---")
-    summary_cols = ["horizon", "model_name", "mae", "rmse", "directional_accuracy", "baseline_mae", "mae_improvement_pct"]
-    print(metrics_df[summary_cols].to_string(index=False))
+    print("\n--- FROZEN HOLDOUT (30%) PERFORMANCE SUMMARY ---")
+    summary_cols = ["horizon", "model_name", "mae", "rmse", "directional_accuracy", "baseline_mae", "mae_improvement_pct", "dm_p_value_one_sided"]
+    avail_cols = [c for c in summary_cols if c in holdout_metrics_df.columns]
+    print(holdout_metrics_df[avail_cols].to_string(index=False))
 
     print("\n--- OUT-OF-SAMPLE TRADING STRATEGY (HORIZON n+1) ---")
     if not backtest_summary_df.empty:

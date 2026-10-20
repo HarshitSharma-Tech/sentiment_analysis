@@ -41,6 +41,19 @@ class DatabaseManager:
 
         with self.get_connection() as conn:
             conn.executescript(schema_sql)
+            # Safe idempotent migrations for schema enhancements
+            migrations = [
+                "ALTER TABLE evaluation_results ADD COLUMN split_type TEXT DEFAULT 'dev_walk_forward';",
+                "ALTER TABLE evaluation_results ADD COLUMN majority_class_baseline REAL;",
+                "ALTER TABLE evaluation_results ADD COLUMN dm_statistic REAL;",
+                "ALTER TABLE evaluation_results ADD COLUMN dm_p_value REAL;",
+                "ALTER TABLE model_predictions ADD COLUMN split_type TEXT DEFAULT 'dev_walk_forward';",
+            ]
+            for m in migrations:
+                try:
+                    conn.execute(m)
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
             conn.commit()
         logger.info(f"Database initialized successfully at {self.db_path}")
 
@@ -287,15 +300,22 @@ class DatabaseManager:
         INSERT OR REPLACE INTO model_predictions (
             model_name, horizon, forecast_timestamp, target_timestamp,
             actual_price, predicted_price, actual_return, predicted_return,
-            run_id, created_at
+            run_id, split_type, created_at
         ) VALUES (
             :model_name, :horizon, :forecast_timestamp, :target_timestamp,
             :actual_price, :predicted_price, :actual_return, :predicted_return,
-            :run_id, :created_at
+            :run_id, :split_type, :created_at
         );
         """
+        # Ensure split_type key exists
+        normalized = []
+        for p in predictions:
+            p_copy = dict(p)
+            p_copy.setdefault("split_type", "dev_walk_forward")
+            normalized.append(p_copy)
+
         with self.get_connection() as conn:
-            cursor = conn.executemany(query, predictions)
+            cursor = conn.executemany(query, normalized)
             conn.commit()
             return cursor.rowcount
 
@@ -304,6 +324,7 @@ class DatabaseManager:
         run_id: Optional[str] = None,
         model_name: Optional[str] = None,
         horizon: Optional[int] = None,
+        split_type: Optional[str] = None,
     ) -> pd.DataFrame:
         """Retrieve model predictions DataFrame."""
         query = "SELECT * FROM model_predictions WHERE 1=1"
@@ -317,6 +338,9 @@ class DatabaseManager:
         if horizon is not None:
             query += " AND horizon = ?"
             params.append(horizon)
+        if split_type:
+            query += " AND split_type = ?"
+            params.append(split_type)
 
         query += " ORDER BY forecast_timestamp ASC, horizon ASC;"
         with self.get_connection() as conn:
@@ -324,35 +348,58 @@ class DatabaseManager:
         return df
 
     def save_evaluation_results(self, results: List[Dict[str, Any]]) -> int:
-        """Save walk-forward cross-validation evaluation results."""
+        """Save walk-forward and holdout evaluation results."""
         if not results:
             return 0
 
         query = """
         INSERT INTO evaluation_results (
-            run_id, model_name, horizon, frequency, train_bars, test_bars,
-            mae, rmse, mape, directional_accuracy, r2_score,
-            baseline_mae, baseline_rmse, sharpe_ratio, sortino_ratio,
-            max_drawdown, cumulative_return, win_rate, total_trades, created_at
+            run_id, model_name, horizon, frequency, split_type, train_bars, test_bars,
+            mae, rmse, mape, directional_accuracy, majority_class_baseline, r2_score,
+            baseline_mae, baseline_rmse, dm_statistic, dm_p_value,
+            sharpe_ratio, sortino_ratio, max_drawdown, cumulative_return, win_rate, total_trades, created_at
         ) VALUES (
-            :run_id, :model_name, :horizon, :frequency, :train_bars, :test_bars,
-            :mae, :rmse, :mape, :directional_accuracy, :r2_score,
-            :baseline_mae, :baseline_rmse, :sharpe_ratio, :sortino_ratio,
-            :max_drawdown, :cumulative_return, :win_rate, :total_trades, :created_at
+            :run_id, :model_name, :horizon, :frequency, :split_type, :train_bars, :test_bars,
+            :mae, :rmse, :mape, :directional_accuracy, :majority_class_baseline, :r2_score,
+            :baseline_mae, :baseline_rmse, :dm_statistic, :dm_p_value,
+            :sharpe_ratio, :sortino_ratio, :max_drawdown, :cumulative_return, :win_rate, :total_trades, :created_at
         );
         """
+        normalized = []
+        for r in results:
+            r_copy = dict(r)
+            r_copy.setdefault("split_type", "dev_walk_forward")
+            r_copy.setdefault("majority_class_baseline", 50.0)
+            r_copy.setdefault("dm_statistic", 0.0)
+            r_copy.setdefault("dm_p_value", 1.0)
+            normalized.append(r_copy)
+
         with self.get_connection() as conn:
-            cursor = conn.executemany(query, results)
+            cursor = conn.executemany(query, normalized)
             conn.commit()
             return cursor.rowcount
 
-    def get_evaluation_results(self, run_id: Optional[str] = None) -> pd.DataFrame:
+    def get_evaluation_results(
+        self,
+        run_id: Optional[str] = None,
+        split_type: Optional[str] = None,
+    ) -> pd.DataFrame:
         """Fetch evaluation results table."""
         query = "SELECT * FROM evaluation_results WHERE 1=1"
         params: List[Any] = []
         if run_id:
             query += " AND run_id = ?"
             params.append(run_id)
+        if split_type:
+            query += " AND split_type = ?"
+            params.append(split_type)
         query += " ORDER BY id DESC;"
         with self.get_connection() as conn:
             return pd.read_sql_query(query, conn, params=params)
+
+    def get_run_ids(self) -> List[str]:
+        """Fetch distinct run IDs ordered from newest to oldest."""
+        query = "SELECT DISTINCT run_id FROM model_predictions ORDER BY id DESC;"
+        with self.get_connection() as conn:
+            cursor = conn.execute(query)
+            return [row[0] for row in cursor.fetchall() if row[0]]

@@ -1,7 +1,9 @@
-# HISTORICAL / DEMO Sentiment Outlook: BTC-USD
-**Generated At:** 2026-10-19 16:31:55 UTC  
-**Data Ingestion Source:** Reproducible Sample Social Data + Real Market Prices  
+# HISTORICAL / DEMO (SYNTHETIC SENTIMENT) Sentiment Outlook: BTC-USD
+**Generated At:** 2026-10-19 17:06:41 UTC  
+**Data Ingestion Source:** Reproducible Sample Social Data (Synthetic) + Real Market Prices  
 **Data Observation Window:** 2026-04-22 to 2026-10-18  
+
+> **[!NOTE] Data Provenance Notice:** This report uses genuine spot price data from yfinance and genuine financial news from public RSS feeds. In an unpaywalled environment, social media sentiment is computed from the calibrated offline reproducible sample dataset (2,881 synthetic posts), NOT a live X Corporation enterprise firehose.
 
 ---
 
@@ -23,31 +25,14 @@
 ## 2. Recent Market News & Contextual Intelligence
 *(Collected via 100% Free Public Financial RSS Feeds - CoinDesk, Cointelegraph, Google News)*
 
-- **[Bitcoin is rejected at $83K as US bond yields reverse higher with equities](https://cointelegraph.com/markets/bitcoin-is-rejected-at-83k-as-us-bond-yields-reverse-higher-with-equities?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound)**  
-  *Source:* Cointelegraph | *Published:* 2026-10-19 16:05:57 | *NLP Polarity:* 🔴 Neg (`-0.57`)
-
-- **[Zerohash rolls out a new tool to move crypto without copying wallet addresses](https://www.coindesk.com/business/2026/10/19/zerohash-rolls-out-a-new-tool-to-move-crypto-without-copying-wallet-addresses)**  
-  *Source:* CoinDesk | *Published:* 2026-10-19 14:58:40 | *NLP Polarity:* ⚪ Neu (`+0.00`)
-
-- **[Current price of Bitcoin for Oct. 19, 2026 - Fortune](https://news.google.com/rss/articles/CBMiZ0FVX3lxTE1vb3A0Q24zaWUwM0E5LXNKeEc3VW5RMF9OZEh3UDZ2TE42RlhTelFvakpHWFQzZTc1WEFIVlBzV25XZVpJUTlxX0RXUnAtblluQUtQWGV5QVdLOGtmNmlINDVvc2tRZk0?oc=5)**  
-  *Source:* Google News Crypto | *Published:* 2026-10-19 14:02:12 | *NLP Polarity:* ⚪ Neu (`+0.00`)
-
-- **[Current price of Ethereum for Oct. 19, 2026 - Fortune](https://news.google.com/rss/articles/CBMiaEFVX3lxTFBNWWd3blY0NUhldlZKclJveGd4Ym1iRHBWWjVVSkdlcTdKbVptaC1xUUswbnQwR1B3aXNjTXBzNWV4eC1QamJYazhHaDNEZ3JaYlFscXhIWDA0NG9jeWlCa2lEQWlFT0It?oc=5)**  
-  *Source:* Google News Crypto | *Published:* 2026-10-19 14:02:11 | *NLP Polarity:* ⚪ Neu (`+0.00`)
-
-- **[Crypto SWOT: The CoinDesk 20 Index surged 52.7% in Q3 2026, while Bitcoin rose 42.7% - Kitco](https://news.google.com/rss/articles/CBMisgFBVV95cUxOQ0Zmcm9mZjM2Z2JpTVZfdjhyQ25oRlMzRERjVHJZSjhRSVFfdmRmSDl5R1hwYlJjT2UyN2VDSlhEejZIZmRhUUZGMmJFUFFaWDVPa0lidjBWX3Q5V3hacUtCelpKc0x5aXhlTFoycThIYzRHSXlTSkpNZDhvQzl4TUVJQzJaYi1CTmhodTVJR0RPbUJzczFtNFVUUTRQbzItZWtwREJCT3Jpcm53MUJIYmxn?oc=5)**  
-  *Source:* Google News Crypto | *Published:* 2026-10-19 13:50:47 | *NLP Polarity:* ⚪ Neu (`+0.00`)
-
-- **[Made an ‘honest’ mistake with crypto taxes? New bill offers way out](https://cointelegraph.com/magazine/made-an-honest-mistake-with-crypto-taxes-new-bill-offers-way-out?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound)**  
-  *Source:* Cointelegraph | *Published:* 2026-10-19 13:30:00 | *NLP Polarity:* 🔴 Neg (`-0.23`)
+- **[CoinDesk]** [U.S. CFTC rebuffs CME legal stance in consequential fight over perpetual futures](https://www.coindesk.com/policy/2026/10/19/u-s-cftc-rebuffs-cme-legal-stance-in-consequential-fight-over-perpetual-futures) *(Published: 2026-10-19 16:47:00 | Compound: `-0.27`)*
+- **[Cointelegraph]** [Metaplanet to take 93.7% stake in Super League through 2,100 BTC deal](https://cointelegraph.com/news/metaplanet-super-league-2100-btc-us-bitcoin-treasury-deal?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound) *(Published: 2026-10-19 16:41:55 | Compound: `+0.60`)*
+- **[Cointelegraph]** [Strive buys $335M in Bitcoin, boosting holdings to 36,818 BTC](https://cointelegraph.com/news/strive-buys-335m-in-bitcoin-boosting-holdings-to-36818-btc?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound) *(Published: 2026-10-19 16:30:18 | Compound: `+0.67`)*
+- **[Cointelegraph]** [Bitcoin is rejected at $83K as US bond yields reverse higher with equities](https://cointelegraph.com/markets/bitcoin-is-rejected-at-83k-as-us-bond-yields-reverse-higher-with-equities?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound) *(Published: 2026-10-19 16:05:57 | Compound: `-0.57`)*
+- **[CoinDesk]** [Zerohash rolls out a new tool to move crypto without copying wallet addresses](https://www.coindesk.com/business/2026/10/19/zerohash-rolls-out-a-new-tool-to-move-crypto-without-copying-wallet-addresses) *(Published: 2026-10-19 14:58:40 | Compound: `+0.00`)*
+- **[Google News Crypto]** [Current price of Bitcoin for Oct. 19, 2026 - Fortune](https://news.google.com/rss/articles/CBMiZ0FVX3lxTE1vb3A0Q24zaWUwM0E5LXNKeEc3VW5RMF9OZEh3UDZ2TE42RlhTelFvakpHWFQzZTc1WEFIVlBzV25XZVpJUTlxX0RXUnAtblluQUtQWGV5QVdLOGtmNmlINDVvc2tRZk0?oc=5) *(Published: 2026-10-19 14:02:12 | Compound: `+0.00`)*
 
 ---
 
-## 3. Methodological Transparency & Limitations
-
-1. **Source Distinction:** 
-   This report utilizes a reproducible sample dataset calibrated to crypto market regimes. Because full live 180-day X historical data is paywalled behind commercial APIs ($100+/mo for X API Basic or paid Apify credits), this free pipeline adheres strictly to free-first principles and does not misrepresent synthetic data as live.
-2. **Engagement Metric Caveat:**
-   Historical like, retweet, and view counts often reflect post-hoc cumulative counts rather than point-in-time values at the exact post second. The feature pipeline applies logarithmic clipping to safeguard against virality skew.
-3. **Model Separation:**
-   News articles are included above purely for qualitative macro context. In accordance with quantitative specifications, the primary machine learning price prediction model relies exclusively on historical price action and X sentiment.
+## 3. Methodological Note & Production Readiness
+This outlook demonstrates the automated point-in-time natural language processing pipeline. To switch from sample synthetic data to a live enterprise X firehose, supply your API credentials in `.env` via `APIFY_API_TOKEN` or `X_BEARER_TOKEN`.

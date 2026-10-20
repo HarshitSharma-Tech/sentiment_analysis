@@ -2,8 +2,13 @@
 Automated Report Generation Module
 Generates:
 1. One-Page Current Sentiment Outlook (`reports/sentiment_outlook.md`)
-2. Comprehensive Quantitative Evaluation Report (`reports/evaluation_report.md`)
-3. Publication-grade PDF Evaluation Report (`reports/evaluation_report.pdf`) using ReportLab
+2. Research-Grade Quantitative Evaluation Report (`reports/evaluation_report.md`)
+3. Publication-Grade PDF Evaluation Report (`reports/evaluation_report.pdf`) using ReportLab
+Features:
+- Separate reporting of 70% Development Walk-Forward vs 30% Frozen Chronological Holdout
+- Explicit Diebold-Mariano test p-values with Benjamini-Hochberg FDR adjustments
+- Majority-class baseline directional comparisons
+- Prominent data provenance disclosures for synthetic social sentiment
 """
 
 from datetime import datetime, timezone
@@ -33,14 +38,14 @@ class ReportGenerator:
         agg_sentiment: pd.DataFrame,
         recent_posts_df: pd.DataFrame,
         recent_news_df: pd.DataFrame,
-        data_source_label: str = "Reproducible Sample Social Data + Real Market Prices",
+        data_source_label: str = "Offline Reproducible Synthetic Social Posts + Real Market Prices",
         is_live_x: bool = False,
     ) -> Path:
         """
         Generate a one-page current sentiment outlook markdown report.
-        Strictly complies with the honesty requirement regarding live vs demo data.
+        Strictly complies with the honesty requirement regarding live vs synthetic data.
         """
-        title_prefix = "LIVE" if is_live_x else "HISTORICAL / DEMO"
+        title_prefix = "LIVE" if is_live_x else "HISTORICAL / DEMO (SYNTHETIC SENTIMENT)"
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         latest_price = prices_df["close"].iloc[-1] if not prices_df.empty else 0.0
@@ -70,6 +75,8 @@ class ReportGenerator:
 **Data Ingestion Source:** {data_source_label}  
 **Data Observation Window:** {start_date} to {end_date}  
 
+> **[!NOTE] Data Provenance Notice:** This report uses genuine spot price data from yfinance and genuine financial news from public RSS feeds. In an unpaywalled environment, social media sentiment is computed from the calibrated offline reproducible sample dataset (2,881 synthetic posts), NOT a live X Corporation enterprise firehose.
+
 ---
 
 ## 1. Executive Sentiment Summary
@@ -98,21 +105,15 @@ class ReportGenerator:
                 pub = row.get("published_at", "N/A")
                 url = row.get("url", "#")
                 score = row.get("sentiment_compound", 0.0)
-                score_badge = "🟢 Pos" if score >= 0.05 else ("🔴 Neg" if score <= -0.05 else "⚪ Neu")
-                md += f"- **[{title}]({url})**  \n  *Source:* {source} | *Published:* {pub} | *NLP Polarity:* {score_badge} (`{score:+.2f}`)\n\n"
+                md += f"- **[{source}]** [{title}]({url}) *(Published: {pub} | Compound: `{score:+.2f}`)*\n"
         else:
-            md += "*No recent news articles ingested. RSS connectors can be refreshed via pipeline.*  \n\n"
+            md += "*No recent RSS articles available in local cache.*\n"
 
-        md += f"""---
+        md += """
+---
 
-## 3. Methodological Transparency & Limitations
-
-1. **Source Distinction:** 
-   {'This report reflects LIVE social data fetched from configured APIs.' if is_live_x else 'This report utilizes a reproducible sample dataset calibrated to crypto market regimes. Because full live 180-day X historical data is paywalled behind commercial APIs ($100+/mo for X API Basic or paid Apify credits), this free pipeline adheres strictly to free-first principles and does not misrepresent synthetic data as live.'}
-2. **Engagement Metric Caveat:**
-   Historical like, retweet, and view counts often reflect post-hoc cumulative counts rather than point-in-time values at the exact post second. The feature pipeline applies logarithmic clipping to safeguard against virality skew.
-3. **Model Separation:**
-   News articles are included above purely for qualitative macro context. In accordance with quantitative specifications, the primary machine learning price prediction model relies exclusively on historical price action and X sentiment.
+## 3. Methodological Note & Production Readiness
+This outlook demonstrates the automated point-in-time natural language processing pipeline. To switch from sample synthetic data to a live enterprise X firehose, supply your API credentials in `.env` via `APIFY_API_TOKEN` or `X_BEARER_TOKEN`.
 """
         target_path = self.reports_dir / "sentiment_outlook.md"
         with open(target_path, "w", encoding="utf-8") as f:
@@ -122,16 +123,17 @@ class ReportGenerator:
 
     def generate_evaluation_report(
         self,
-        metrics_df: pd.DataFrame,
-        backtest_results_df: pd.DataFrame,
+        dev_metrics_df: pd.DataFrame,
+        holdout_metrics_df: Optional[pd.DataFrame] = None,
+        backtest_results_df: Optional[pd.DataFrame] = None,
         ablation_df: Optional[pd.DataFrame] = None,
         asset_ticker: str = "BTC-USD",
         frequency: str = "1h",
         run_id: str = "default_run",
     ) -> Path:
         """
-        Generate a comprehensive Markdown evaluation report comparing all models
-        across all 6 horizons with baseline comparisons and strategy metrics.
+        Generate research-grade Markdown evaluation report with separate Development
+        and Frozen Holdout tables, Diebold-Mariano tests, and transaction-cost backtest metrics.
         """
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -143,37 +145,70 @@ class ReportGenerator:
 
 ---
 
-## 1. Executive Summary
+## 1. Executive Summary & Research Methodology
 
-This project delivers a production-grade, reproducible machine learning pipeline predicting Bitcoin (`{asset_ticker}`) prices and returns across **six distinct forecast horizons** ($n+0$ to $n+5$). In strict compliance with the core assessment requirement, the entire system is built **exclusively using free tools and free data sources**, requiring zero paid API subscriptions, credits, or GPU hardware.
+This report documents out-of-sample predictive performance across **six distinct forecast horizons** ($n+0$ to $n+5$) for Bitcoin (`{asset_ticker}`). The system is engineered to institutional quantitative standards using **100% free and open-source tools**.
 
-### Key Rigor & Methodology Enhancements:
-- **Zero-Lookahead Feature Engineering:** Strictly chronological point-in-time calculation of 24 curated technical and social sentiment features.
-- **Distinct Target Definitions across $n+0$ to $n+5$:** At forecast cutoff $t$, all horizons share the identical known cutoff price $P_{{cutoff}} = P_{{close}}(t-1)$ and input vector $X_t$, forecasting future closes $P_{{close}}(t+h)$.
-- **Purged Walk-Forward Cross Validation:** Eliminates multi-step target overlap by purging the $h$-step boundary before each test fold.
-- **Regularization & Variance Reduction:** Models use adaptive shrinkage (RidgeCV) and constrained tree depth to prevent return noise overfitting.
-- **Realistic Backtesting:** Incorporates 10 bps transaction costs, reporting exposure, turnover, win rate, Sharpe, Sortino, and comparing against Buy & Hold and No-Trade baselines.
+### Core Methodology & Leakage Protections:
+- **Strict Point-in-Time Cutoff:** All six forecast horizons share the identical reference price $P_{{cutoff}}(t) = P_{{close}}(t-1)$ and feature vector $X_t$ (shifted by 1 to use information strictly up to $close(t-1)$).
+- **Target Horizons & Realization:**
+  - $n+0$: Predicts $close(t)$ (1 hour ahead of cutoff; realizes at $t + 1\\text{{h}}$).
+  - $n+1$: Predicts $close(t+1)$ (2 hours ahead of cutoff; realizes at $t + 2\\text{{h}}$).
+  - $n+2 \\dots n+5$: Predicts $close(t+h)$ (realizes at $t + (h+1)\\text{{h}}$).
+  - All targets are returns $R_t^{{(h)}} = (close(t+h) - close(t-1)) / close(t-1)$.
+  - Predicted price is reconstructed as $\\hat{{P}}_{{t+h}} = close(t-1) \\times (1 + \\hat{{R}}_t^{{(h)}})$.
+- **Chronological Data Partitioning:**
+  - **70% Development Period:** Used for model tuning, feature selection, and purged walk-forward cross-validation.
+  - **30% Frozen Chronological Holdout:** Strictly quarantined and evaluated once without parameter retuning.
+- **Purging + 5-Bar Embargo:** Eliminates overlapping label lookahead and auto-regressive rolling feature memory across fold boundaries.
+- **Paired Statistical Tests:** Diebold-Mariano test (HLN 1997 adjusted) against Naive Persistence baseline with Benjamini-Hochberg False Discovery Rate (FDR) corrections.
+- **Non-Overlapping Backtest:** Simulates hourly spot executions with 10 bps friction, eliminating multi-period compounding artifacts.
 
 ---
 
 ## 2. Multi-Horizon Forecast Results Matrix
 
-Below are the actual out-of-sample evaluation metrics across all six forecast horizons:
+### 2A. Development Period: Purged Walk-Forward Cross Validation (First 70% Window)
+*Evaluated across rolling walk-forward test folds with $h$-step purging and 5-bar embargo:*
 
-| Horizon | Model | Out-of-Sample Bars | MAE ($) | RMSE ($) | MAPE (%) | Directional Accuracy (%) | Baseline MAE ($) | MAE Impv (%) |
-| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Horizon | Model | Out-of-Sample Bars | MAE ($) | RMSE ($) | Dir Acc (%) | Maj Class Base (%) | Base MAE ($) | DM Stat | DM p-val (FDR) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 """
-        for _, row in metrics_df.sort_values(["horizon", "mae"]).iterrows():
+        for _, row in dev_metrics_df.sort_values(["horizon", "mae"]).iterrows():
             h_str = f"n+{int(row['horizon'])}"
             m_str = str(row['model_name']).replace("_", " ").title()
             bars = int(row['test_bars'])
             mae = float(row['mae'])
             rmse = float(row['rmse'])
-            mape = float(row['mape'])
             dir_acc = float(row['directional_accuracy'])
+            maj_b = float(row.get('majority_class_baseline', 50.0))
             b_mae = float(row['baseline_mae'])
-            impv = float(row.get('mae_improvement_pct', 0.0))
-            md += f"| **{h_str}** | {m_str} | {bars} | ${mae:,.2f} | ${rmse:,.2f} | {mape:.2f}% | **{dir_acc:.1f}%** | ${b_mae:,.2f} | {impv:+.2f}% |\n"
+            dm_stat = float(row.get('dm_statistic', 0.0))
+            dm_pval = float(row.get('dm_fdr_q_value', row.get('dm_p_value_one_sided', 1.0)))
+            sig_star = "*" if dm_pval < 0.05 else ""
+            md += f"| **{h_str}** | {m_str} | {bars} | ${mae:,.2f} | ${rmse:,.2f} | **{dir_acc:.1f}%** | {maj_b:.1f}% | ${b_mae:,.2f} | {dm_stat:+.2f} | {dm_pval:.3f}{sig_star} |\n"
+
+        if holdout_metrics_df is not None and not holdout_metrics_df.empty:
+            md += """
+### 2B. Frozen Chronological Holdout: Out-of-Sample Evaluation (Final 30% Window)
+*Trained on Development Period with 5-bar embargo; tested strictly once on quarantined future data:*
+
+| Horizon | Model | Holdout Bars | MAE ($) | RMSE ($) | Dir Acc (%) | Maj Class Base (%) | Base MAE ($) | DM Stat | DM p-val (FDR) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+"""
+            for _, row in holdout_metrics_df.sort_values(["horizon", "mae"]).iterrows():
+                h_str = f"n+{int(row['horizon'])}"
+                m_str = str(row['model_name']).replace("_", " ").title()
+                bars = int(row['test_bars'])
+                mae = float(row['mae'])
+                rmse = float(row['rmse'])
+                dir_acc = float(row['directional_accuracy'])
+                maj_b = float(row.get('majority_class_baseline', 50.0))
+                b_mae = float(row['baseline_mae'])
+                dm_stat = float(row.get('dm_statistic', 0.0))
+                dm_pval = float(row.get('dm_fdr_q_value', row.get('dm_p_value_one_sided', 1.0)))
+                sig_star = "*" if dm_pval < 0.05 else ""
+                md += f"| **{h_str}** | {m_str} | {bars} | ${mae:,.2f} | ${rmse:,.2f} | **{dir_acc:.1f}%** | {maj_b:.1f}% | ${b_mae:,.2f} | {dm_stat:+.2f} | {dm_pval:.3f}{sig_star} |\n"
 
         if ablation_df is not None and not ablation_df.empty:
             md += """
@@ -181,7 +216,8 @@ Below are the actual out-of-sample evaluation metrics across all six forecast ho
 
 ## 3. Feature Ablation Study: Price-Only vs. Price + Sentiment
 
-Comparison of predictive power when adding X social sentiment to pure market price features:
+> **[!IMPORTANT] Social Sentiment Data Provenance Disclosure:**
+> The social sentiment ablation reported below was conducted using the calibrated offline reproducible sample dataset (2,881 synthetic posts), NOT live historical X Corporation firehose data. In an unpaywalled environment, these metrics demonstrate that the pipeline mechanics and ablation code execute correctly; they do NOT prove live social media alpha.
 
 | Horizon | Model | Feature Set | MAE ($) | RMSE ($) | Directional Accuracy (%) | Baseline MAE ($) |
 | :---: | :--- | :--- | :---: | :---: | :---: | :---: |
@@ -196,29 +232,32 @@ Comparison of predictive power when adding X social sentiment to pure market pri
                 b_mae = float(r['baseline_mae'])
                 md += f"| **{h_str}** | {m_str} | {f_set} | ${mae:,.2f} | ${rmse:,.2f} | **{dir_acc:.1f}%** | ${b_mae:,.2f} |\n"
 
-        md += """
+        if backtest_results_df is not None and not backtest_results_df.empty:
+            md += """
 ---
 
 ## 4. Quantitative Trading Strategy Performance
 
-Simulated out-of-sample trading performance with realistic transaction costs (10 bps per trade slippage/taker fee):
+Simulated out-of-sample trading performance with realistic transaction costs (10 bps per trade slippage/taker fee) and non-overlapping spot return accounting:
 
-| Model | Horizon | Cumulative Return (%) | Exposure (%) | Turnover (%) | Sharpe | Sortino | Max DD (%) | Win Rate (%) | Trades | Buy & Hold Benchmark (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Model | Horizon | Split | Cum Ret (%) | Exposure (%) | Turnover (%) | Sharpe | Sortino | Autocorr (Lag 1) | Max DD (%) | Win Rate (%) | Trades | Buy & Hold Benchmark (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 """
-        for _, row in backtest_results_df.iterrows():
-            m_str = str(row['model_name']).replace("_", " ").title()
-            h_str = f"n+{int(row['horizon'])}"
-            c_ret = float(row['cumulative_return_pct'])
-            exp = float(row.get('exposure_pct', 0.0))
-            to = float(row.get('turnover_pct', 0.0))
-            sh = float(row['sharpe_ratio'])
-            so = float(row['sortino_ratio'])
-            mdd = float(row['max_drawdown_pct'])
-            win = float(row['win_rate_pct'])
-            trades = int(row['total_trades'])
-            bm_ret = float(row['benchmark_cumulative_pct'])
-            md += f"| **{m_str}** | {h_str} | **{c_ret:+.2f}%** | {exp:.1f}% | {to:.1f}% | **{sh:.2f}** | {so:.2f} | {mdd:.2f}% | {win:.1f}% | {trades} | {bm_ret:+.2f}% |\n"
+            for _, row in backtest_results_df.iterrows():
+                m_str = str(row['model_name']).replace("_", " ").title()
+                h_str = f"n+{int(row['horizon'])}"
+                s_str = str(row.get('split_type', 'all')).replace("_", " ").title()
+                c_ret = float(row['cumulative_return_pct'])
+                exp = float(row.get('exposure_pct', 0.0))
+                to = float(row.get('turnover_pct', 0.0))
+                sh = float(row['sharpe_ratio'])
+                so = float(row['sortino_ratio'])
+                ac = float(row.get('autocorr_lag1', 0.0))
+                mdd = float(row['max_drawdown_pct'])
+                win = float(row['win_rate_pct'])
+                trades = int(row['total_trades'])
+                bm_ret = float(row['benchmark_cumulative_pct'])
+                md += f"| **{m_str}** | {h_str} | {s_str} | **{c_ret:+.2f}%** | {exp:.1f}% | {to:.1f}% | **{sh:.2f}** | {so:.2f} | {ac:+.2f} | {mdd:.2f}% | {win:.1f}% | {trades} | {bm_ret:+.2f}% |\n"
 
         md += """
 ---
@@ -255,22 +294,28 @@ The following visual artifacts were generated directly from the out-of-sample va
 ## 7. Honest Limitations & Future Improvements
 
 1. **Social Data Paywalls:** Commercial X historical data for 180 days is strictly paywalled by X Corporation at $100+/mo. The modular connector allows instant plug-and-play if legitimate tokens are provided.
-2. **Execution Slippage:** The backtest applies a 10 bps fixed cost assumption. In volatile regime breaks, market impact and liquidity spreads may fluctuate dynamically.
-3. **Signal Strength in Efficient Markets:** Out-of-sample directional accuracy on hourly BTC bars hovers near 50-53%, reflecting efficient market pricing. Excess turnover quickly erodes gross alpha.
+2. **Signal-to-Noise Ratio in Crypto Markets:** On hourly Bitcoin returns, directional accuracy hovers between 50% and 53%, consistent with semi-strong market efficiency. Models with aggressive trading turnover suffer from transaction fee drag.
+3. **Execution Slippage:** The backtest applies a 10 bps fixed cost assumption. In volatile regime breaks, market impact and liquidity spreads may fluctuate dynamically.
 """
         target_path = self.reports_dir / "evaluation_report.md"
         with open(target_path, "w", encoding="utf-8") as f:
             f.write(md)
         logger.info(f"Saved evaluation report markdown to {target_path}")
 
-        # Also generate PDF version
-        self.generate_evaluation_pdf(metrics_df, backtest_results_df, target_path.with_suffix(".pdf"))
+        # Also compile PDF version
+        self.generate_evaluation_pdf(
+            dev_metrics_df=dev_metrics_df,
+            holdout_metrics_df=holdout_metrics_df,
+            backtest_results_df=backtest_results_df,
+            pdf_path=target_path.with_suffix(".pdf"),
+        )
         return target_path
 
     def generate_evaluation_pdf(
         self,
-        metrics_df: pd.DataFrame,
-        backtest_results_df: pd.DataFrame,
+        dev_metrics_df: pd.DataFrame,
+        holdout_metrics_df: Optional[pd.DataFrame],
+        backtest_results_df: Optional[pd.DataFrame],
         pdf_path: Path,
     ) -> Path:
         """Generate a clean, professional PDF summary using ReportLab."""
@@ -281,97 +326,130 @@ The following visual artifacts were generated directly from the out-of-sample va
             title_style = ParagraphStyle(
                 "TitleStyle",
                 parent=styles["Heading1"],
-                fontSize=18,
-                leading=22,
+                fontSize=16,
+                leading=20,
                 textColor=colors.HexColor("#1a365d"),
-                spaceAfter=10,
+                spaceAfter=8,
             )
             heading2 = ParagraphStyle(
                 "Heading2Style",
                 parent=styles["Heading2"],
-                fontSize=13,
-                leading=16,
+                fontSize=11,
+                leading=14,
                 textColor=colors.HexColor("#2b6cb0"),
-                spaceBefore=12,
-                spaceAfter=6,
+                spaceBefore=10,
+                spaceAfter=4,
             )
             body_style = ParagraphStyle(
                 "BodyStyle",
                 parent=styles["Normal"],
-                fontSize=9,
-                leading=12,
-                spaceAfter=6,
+                fontSize=8,
+                leading=11,
+                spaceAfter=4,
             )
 
             story = [
                 Paragraph("CrowdWisdomTrading: Quantitative Prediction Report", title_style),
-                Paragraph(f"Multi-Horizon Sentiment & Market Price Evaluation | Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}", body_style),
-                HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2b6cb0"), spaceAfter=12),
-                Paragraph("1. Executive Summary & Free-First Architecture", heading2),
+                Paragraph(f"Multi-Horizon Evaluation across 70% Dev & 30% Holdout | Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}", body_style),
+                HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2b6cb0"), spaceAfter=8),
+                Paragraph("1. Research Methodology & Leakage Prevention", heading2),
                 Paragraph(
-                    "This report documents out-of-sample predictive performance across 6 horizons (n+0 to n+5) using exclusively free tools, local VADER NLP sentiment analysis, and chronological purged walk-forward cross validation without lookahead leakage.",
+                    "All horizons predict return from confirmed close(t-1) to future close(t+h). Training features use information strictly up to close(t-1). Evaluated using 70% Development (purged walk-forward CV with 5-bar embargo) and 30% Frozen Chronological Holdout.",
                     body_style,
                 ),
-                Spacer(1, 10),
-                Paragraph("2. Walk-Forward Validation Metrics (Out-of-Sample)", heading2),
+                Spacer(1, 6),
+                Paragraph("2. Development Period Walk-Forward Validation Metrics (70% Window)", heading2),
             ]
 
-            # Build Metrics Table
-            table_data = [["Horizon", "Model", "MAE ($)", "RMSE ($)", "MAPE (%)", "Dir Acc (%)", "Base MAE ($)"]]
-            for _, r in metrics_df.sort_values(["horizon", "mae"]).head(18).iterrows():
+            # Build Dev Table
+            table_data = [["Horizon", "Model", "MAE ($)", "RMSE ($)", "Dir Acc (%)", "Base MAE ($)", "DM p-val"]]
+            for _, r in dev_metrics_df.sort_values(["horizon", "mae"]).head(18).iterrows():
+                dm_pval = float(r.get('dm_fdr_q_value', r.get('dm_p_value_one_sided', 1.0)))
                 table_data.append([
                     f"n+{int(r['horizon'])}",
                     str(r['model_name']).replace("_", " ").title()[:14],
                     f"${r['mae']:,.1f}",
                     f"${r['rmse']:,.1f}",
-                    f"{r['mape']:.1f}%",
                     f"{r['directional_accuracy']:.1f}%",
                     f"${r['baseline_mae']:,.1f}",
+                    f"{dm_pval:.3f}",
                 ])
 
-            t = Table(table_data, colWidths=[55, 110, 65, 65, 65, 75, 75])
+            t = Table(table_data, colWidths=[55, 115, 75, 75, 80, 75, 65])
             t.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2b6cb0")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7fafc")]),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e0")),
             ]))
             story.append(t)
-            story.append(Spacer(1, 14))
+            story.append(Spacer(1, 10))
 
-            # Build Trading Strategy Table
-            story.append(Paragraph("3. Quantitative Trading Strategy Performance", heading2))
-            strat_data = [["Model", "Horizon", "Cum Ret (%)", "Exposure (%)", "Sharpe", "Sortino", "Max DD (%)", "Trades"]]
-            for _, r in backtest_results_df.iterrows():
-                strat_data.append([
-                    str(r['model_name']).replace("_", " ").title()[:14],
-                    f"n+{int(r['horizon'])}",
-                    f"{r['cumulative_return_pct']:+.1f}%",
-                    f"{r.get('exposure_pct', 0.0):.1f}%",
-                    f"{r['sharpe_ratio']:.2f}",
-                    f"{r['sortino_ratio']:.2f}",
-                    f"{r['max_drawdown_pct']:.1f}%",
-                    str(int(r['total_trades'])),
-                ])
+            # Build Holdout Table if present
+            if holdout_metrics_df is not None and not holdout_metrics_df.empty:
+                story.append(Paragraph("3. Frozen Holdout Validation Metrics (30% Quarantined Window)", heading2))
+                h_data = [["Horizon", "Model", "MAE ($)", "RMSE ($)", "Dir Acc (%)", "Base MAE ($)", "DM p-val"]]
+                for _, r in holdout_metrics_df.sort_values(["horizon", "mae"]).head(18).iterrows():
+                    dm_pval = float(r.get('dm_fdr_q_value', r.get('dm_p_value_one_sided', 1.0)))
+                    h_data.append([
+                        f"n+{int(r['horizon'])}",
+                        str(r['model_name']).replace("_", " ").title()[:14],
+                        f"${r['mae']:,.1f}",
+                        f"${r['rmse']:,.1f}",
+                        f"{r['directional_accuracy']:.1f}%",
+                        f"${r['baseline_mae']:,.1f}",
+                        f"{dm_pval:.3f}",
+                    ])
+                ht = Table(h_data, colWidths=[55, 115, 75, 75, 80, 75, 65])
+                ht.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c5282")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#edf2f7")]),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e0")),
+                ]))
+                story.append(ht)
+                story.append(Spacer(1, 10))
 
-            st = Table(strat_data, colWidths=[95, 45, 65, 65, 55, 55, 65, 45])
-            st.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#edf2f7")]),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e0")),
-            ]))
-            story.append(st)
+            # Build Strategy Table
+            if backtest_results_df is not None and not backtest_results_df.empty:
+                story.append(Paragraph("4. Quantitative Trading Strategy Performance (10 bps Friction)", heading2))
+                strat_data = [["Model", "Horizon", "Split", "Cum Ret", "Exposure", "Sharpe", "Sortino", "Max DD", "Trades"]]
+                for _, r in backtest_results_df.iterrows():
+                    strat_data.append([
+                        str(r['model_name']).replace("_", " ").title()[:12],
+                        f"n+{int(r['horizon'])}",
+                        str(r.get('split_type', 'all'))[:8].title(),
+                        f"{r['cumulative_return_pct']:+.1f}%",
+                        f"{r.get('exposure_pct', 0.0):.1f}%",
+                        f"{r['sharpe_ratio']:.2f}",
+                        f"{r['sortino_ratio']:.2f}",
+                        f"{r['max_drawdown_pct']:.1f}%",
+                        str(int(r['total_trades'])),
+                    ])
+
+                st = Table(strat_data, colWidths=[80, 45, 55, 55, 55, 50, 50, 55, 45])
+                st.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#edf2f7")]),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e0")),
+                ]))
+                story.append(st)
 
             doc.build(story)
             logger.info(f"Successfully compiled PDF report to {pdf_path}")
