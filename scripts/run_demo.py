@@ -28,6 +28,7 @@ from config.settings import get_config
 from src.database import DatabaseManager
 from src.ingestion.prices import PriceIngestion
 from src.ingestion.x_import import XPostImporter
+from src.ingestion.apify_x import ApifyXConnector
 from src.ingestion.news import NewsIngestion
 from src.sentiment import get_analyzer
 from src.features import FeatureEngineer, PRICE_FEATURE_COLS, ALL_FEATURE_COLS
@@ -70,7 +71,7 @@ def run_demo() -> None:
     )
     logger.info(f"Loaded {len(prices_df)} price bars ({prices_df.index.min()} to {prices_df.index.max()}).")
 
-    # 3. Social Data Ingestion (Free local reproducible dataset)
+    # 3. Social Data Ingestion (Free local reproducible dataset + Live Apify if configured)
     logger.info("3/9 Ingesting X/Twitter posts & performing local VADER sentiment analysis...")
     sample_json = cfg.sample_dir / "btc_sample_x_posts.json"
     if not sample_json.exists():
@@ -79,7 +80,24 @@ def run_demo() -> None:
         generate_sample_data(days=cfg.history_days)
 
     importer = XPostImporter(db_manager=db)
-    posts = importer.import_from_json(sample_json, source_label="sample_reproducible")
+    importer.import_from_json(sample_json, source_label="sample_reproducible")
+
+    is_live_x = False
+    all_current_posts = db.get_x_posts()
+    existing_apify_posts = all_current_posts[all_current_posts["source"] == "apify"] if not all_current_posts.empty else pd.DataFrame()
+    if not existing_apify_posts.empty:
+        is_live_x = True
+        logger.info(f"Detected {len(existing_apify_posts)} live Apify posts in SQLite database.")
+    elif cfg.apify_api_token:
+        try:
+            apify = ApifyXConnector(api_token=cfg.apify_api_token, db_manager=db)
+            live_posts = apify.fetch_posts(query="Bitcoin OR BTC", max_posts=50, actor_id="apidojo/tweet-scraper", query_ticker="BTC")
+            if live_posts:
+                is_live_x = True
+                logger.info(f"Successfully integrated {len(live_posts)} live X posts via Apify.")
+        except Exception as e:
+            logger.warning(f"Apify live collection skipped: {e}")
+
     posts_df = db.get_x_posts(ticker="BTC")
     logger.info(f"Total processed X posts available: {len(posts_df)}")
 
@@ -271,14 +289,19 @@ def run_demo() -> None:
     # 11. Reports
     logger.info("Compiling reports...")
     rg = ReportGenerator(reports_dir=cfg.reports_dir)
+    data_label = (
+        "Live Apify X Scraper (apidojo/tweet-scraper) + 180-Day Baseline & Real Market Prices"
+        if is_live_x
+        else "Reproducible Sample Social Data (Calibrated) + Real Market Prices"
+    )
     outlook_path = rg.generate_sentiment_outlook(
         asset_ticker=cfg.asset_ticker,
         prices_df=prices_df,
         agg_sentiment=agg_sentiment,
         recent_posts_df=posts_df,
         recent_news_df=recent_news_df,
-        data_source_label="Reproducible Sample Social Data (Synthetic) + Real Market Prices",
-        is_live_x=False,
+        data_source_label=data_label,
+        is_live_x=is_live_x,
     )
     report_path = rg.generate_evaluation_report(
         dev_metrics_df=dev_metrics_df,

@@ -9,6 +9,12 @@ import os
 from pathlib import Path
 from typing import List
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # Base workspace directory
 BASE_DIR = Path(__file__).resolve().parent.parent
 

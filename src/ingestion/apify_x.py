@@ -7,9 +7,16 @@ delegates to free local imports or sample data.
 
 from datetime import datetime, timezone
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import requests
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from src.database import DatabaseManager
 from src.sentiment import SentimentAnalyzer, get_analyzer
@@ -26,7 +33,7 @@ class ApifyXConnector:
         db_manager: Optional[DatabaseManager] = None,
         analyzer: Optional[SentimentAnalyzer] = None,
     ):
-        self.api_token = api_token or ""
+        self.api_token = os.getenv("APIFY_API_TOKEN", "") if api_token is None else api_token
         self.db = db_manager
         self.analyzer = analyzer or get_analyzer()
 
@@ -39,6 +46,7 @@ class ApifyXConnector:
         query: str = "Bitcoin OR BTC",
         max_posts: int = 200,
         actor_id: str = "apidojo/tweet-scraper",
+        query_ticker: str = "BTC",
     ) -> List[Dict[str, Any]]:
         """
         Fetch posts from Apify REST API if credentials are provided.
@@ -85,12 +93,19 @@ class ApifyXConnector:
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         for item in items:
-            text = str(item.get("full_text") or item.get("text") or "").strip()
+            # Handles both standard text and modern Apify fullText
+            text = str(
+                item.get("fullText")
+                or item.get("full_text")
+                or item.get("text")
+                or ""
+            ).strip()
             if not text:
                 continue
 
             post_id = str(item.get("id_str") or item.get("id") or f"apify_{hash(text[:40])}")
-            created_at = item.get("created_at") or now_utc
+            # Handles createdAt (ISO or UTC string) and created_at
+            created_at = item.get("createdAt") or item.get("created_at") or now_utc
 
             # Parse timestamp to UTC standard string
             try:
@@ -99,14 +114,24 @@ class ApifyXConnector:
             except Exception:
                 ts_str = now_utc
 
-            likes = int(item.get("favorite_count") or item.get("likes") or 0)
-            reposts = int(item.get("retweet_count") or item.get("reposts") or 0)
-            views = int(item.get("view_count") or item.get("views") or 0)
+            # Engagement metrics: supports camelCase (apidojo) and snake_case
+            likes = int(item.get("likeCount") or item.get("favorite_count") or item.get("likes") or 0)
+            reposts = int(item.get("retweetCount") or item.get("retweet_count") or item.get("reposts") or 0)
+            views = int(item.get("viewCount") or item.get("view_count") or item.get("views") or 0)
 
-            user = item.get("user") or {}
-            followers = int(user.get("followers_count") or item.get("author_followers") or 0)
+            # Author follower count: supports nested author dict or user dict
+            author_obj = item.get("author") if isinstance(item.get("author"), dict) else (
+                item.get("user") if isinstance(item.get("user"), dict) else {}
+            )
+            followers = int(
+                author_obj.get("followers")
+                or author_obj.get("followersCount")
+                or author_obj.get("followers_count")
+                or item.get("author_followers")
+                or 0
+            )
 
-            # Sentiment scoring
+            # Sentiment scoring via crypto-augmented VADER NLP
             scores = self.analyzer.analyze(text)
 
             post_dict = {
@@ -117,7 +142,7 @@ class ApifyXConnector:
                 "reposts": reposts,
                 "views": views,
                 "author_followers": followers,
-                "query_ticker": "BTC",
+                "query_ticker": query_ticker,
                 "sentiment_compound": scores["compound"],
                 "sentiment_pos": scores["pos"],
                 "sentiment_neu": scores["neu"],
