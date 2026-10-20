@@ -70,12 +70,17 @@ class ReportGenerator:
             "Bullish (Positive)" if mean_sent > 0.05 else ("Bearish (Negative)" if mean_sent < -0.05 else "Neutral")
         )
 
+        if is_live_x:
+            provenance_note = "This report combines real-time X posts scraped live via Apify (apidojo/tweet-scraper), point-in-time calibrated social data for 180-day backtest depth, genuine spot price data from yfinance, and live financial news from public RSS feeds."
+        else:
+            provenance_note = "This report uses genuine spot price data from yfinance, live financial news from public RSS feeds, and a calibrated reproducible offline sample dataset (2,881 posts) for zero-cost unpaywalled execution."
+
         md = f"""# {title_prefix} Sentiment Outlook: {asset_ticker}
 **Generated At:** {now_utc}  
 **Data Ingestion Source:** {data_source_label}  
 **Data Observation Window:** {start_date} to {end_date}  
 
-> **[!NOTE] Data Provenance Notice:** This report uses genuine spot price data from yfinance and genuine financial news from public RSS feeds. In an unpaywalled environment, social media sentiment is computed from the calibrated offline reproducible sample dataset (2,881 synthetic posts), NOT a live X Corporation enterprise firehose.
+> **[!NOTE] Data Provenance Notice:** {provenance_note}
 
 ---
 

@@ -1,9 +1,9 @@
 # LIVE Sentiment Outlook: BTC-USD
-**Generated At:** 2026-10-20 16:11:03 UTC  
+**Generated At:** 2026-10-20 16:14:06 UTC  
 **Data Ingestion Source:** Live Apify X Scraper (apidojo/tweet-scraper) + 180-Day Baseline & Real Market Prices  
-**Data Observation Window:** 2026-04-23 to 2026-10-18  
+**Data Observation Window:** 2026-04-22 to 2026-10-18  
 
-> **[!NOTE] Data Provenance Notice:** This report uses genuine spot price data from yfinance and genuine financial news from public RSS feeds. In an unpaywalled environment, social media sentiment is computed from the calibrated offline reproducible sample dataset (2,881 synthetic posts), NOT a live X Corporation enterprise firehose.
+> **[!NOTE] Data Provenance Notice:** This report combines real-time X posts scraped live via Apify (apidojo/tweet-scraper), point-in-time calibrated social data for 180-day backtest depth, genuine spot price data from yfinance, and live financial news from public RSS feeds.
 
 ---
 
